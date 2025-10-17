@@ -1,15 +1,43 @@
 #!/usr/bin/env python3
 """
+firetimer-joinvids.py - Join multiple MP4 video parts into a single file
+
 Usage:
-  python3 firetimer-joinvids.py --folder <folder_with_parts> --out <output.mp4> [--intro intro.mp4] [--outro outro.mp4]
+  python3 firetimer-joinvids.py --folder <folder_with_parts> [OPTIONS]
 
-Short parameters: -f, -i, -o, -O
+Required Arguments:
+  --folder, --parts, -f, -p    Folder containing MP4 parts to join
+                               (supports both 'in-parts' and 'out-parts')
 
-Example:
-  python3 firetimer-joinvids.py -f parts -O final.mp4
-  python3 firetimer-joinvids.py -f parts -i intro.mp4 -o outro.mp4 -O final.mp4
+Optional Arguments:
+  --intro, -i                  Optional intro video file (added at beginning)
+  --outro, -o                  Optional outro video file (added at end)
+  --out, -O                    Output filename (saved one level above folder)
+                               If not specified, auto-generates based on folder type:
+                               - 'out-parts' → final_out_video.mp4
+                               - 'in-parts' → final_in_video.mp4
+                               - other → final_video.mp4
+
+Output:
+  - Joins all MP4 files in alphabetical order
+  - Output saved one level above the parts folder
+  - Uses FFmpeg concat with copy mode (no re-encoding, fast!)
+
+Examples:
+  # Join parts with auto-generated output filename
+  python3 firetimer-joinvids.py -f out-parts
   
-Output video will be saved one level above the specified folder.
+  # Join with custom output filename
+  python3 firetimer-joinvids.py -f in-parts -O final_video.mp4
+  
+  # Join with intro and outro
+  python3 firetimer-joinvids.py -f out-parts -i intro.mp4 -o outro.mp4 -O complete.mp4
+
+Features:
+  - Fast joining using FFmpeg concat (no re-encoding)
+  - Alphabetical ordering of parts
+  - Optional intro/outro support
+  - Auto-detects folder type for intelligent naming
 """
 
 import argparse
@@ -71,17 +99,46 @@ def join_videos(video_list, output_file="output.mp4"):
         raise
 
 def main():
-    parser = argparse.ArgumentParser(description="Join multiple mp4 clips with optional intro/outro.")
-    parser.add_argument("--folder", "-f", required=True, help="Folder containing parts (.mp4 files).")
+    parser = argparse.ArgumentParser(
+        description="Join multiple MP4 clips with optional intro/outro.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Output:
+  - Joins all MP4 files in alphabetical order
+  - Auto-generates output filename if not specified:
+    * 'out-parts' → final_out_video.mp4
+    * 'in-parts' → final_in_video.mp4
+    * other → final_video.mp4
+  - Saves output one level above parts folder
+
+Examples:
+  python3 firetimer-joinvids.py -f out-parts
+  python3 firetimer-joinvids.py -f in-parts -O final_video.mp4
+  python3 firetimer-joinvids.py -f out-parts -i intro.mp4 -o outro.mp4 -O complete.mp4
+        """
+    )
+    parser.add_argument("--folder", "--parts", "-f", "-p", required=True, help="Folder containing parts (.mp4 files) - supports both 'in-parts' and 'out-parts'.")
     parser.add_argument("--intro", "-i", help="Optional intro video file.")
     parser.add_argument("--outro", "-o", help="Optional outro video file.")
-    parser.add_argument("--out", "-O", required=True, help="Output filename (will be saved one level above the folder)")
+    parser.add_argument("--out", "-O", help="Output filename (will be saved one level above the folder). If not specified, auto-generates based on folder type.")
     args = parser.parse_args()
 
     check_deps()
 
+    # Auto-generate output filename if not specified
+    if args.out:
+        output_filename = args.out
+    else:
+        folder_name = os.path.basename(os.path.abspath(args.folder))
+        if "out-parts" in folder_name:
+            output_filename = "final_out_video.mp4"
+        elif "in-parts" in folder_name:
+            output_filename = "final_in_video.mp4"
+        else:
+            output_filename = "final_video.mp4"
+        print(f"📝 Auto-generated output filename: {output_filename}")
+
     # Ensure output filename has .mp4 extension
-    output_filename = args.out
     if not output_filename.endswith('.mp4'):
         output_filename += '.mp4'
 

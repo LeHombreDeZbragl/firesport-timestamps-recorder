@@ -1,15 +1,59 @@
 #!/usr/bin/env python3
 """
-Video Timestamp Recorder (Video Only)
-A GUI application for playing MP4 videos and recording timestamped segments.
-Audio is disabled for better performance and stability.
+video_timestamp_recorder.py - GUI application for marking video timestamps
+
+Description:
+  A video-only player for recording timestamped segments with frame-by-frame precision.
+  Audio is disabled for better performance and stability.
+  
+Usage:
+  python3 video_timestamp_recorder.py
+
+Interface:
+  - Load Video: Opens file dialog to select MP4 video
+  - Play/Pause: Space bar or button
+  - Seek: Click on progress bar or use arrow keys
+  - Frame Navigation:
+    * , (comma) - Back 1 frame
+    * . (period) - Forward 1 frame
+    * Shift+← - Back 10 frames
+    * Shift+→ - Forward 10 frames
+  
+Marking Segments:
+  1. Position video at start point → Press S or click "Start Segment"
+  2. (Optional) Type segment name in the text field → Press N to focus
+  3. Position video at end point → Press E or click "End Segment"
+  4. Segment is automatically saved with name (or auto-generated number)
+  5. All segments exported to 'timestamps.txt' in format:
+     title;start_time;end_time
+
+Keyboard Shortcuts:
+  S              - Mark start of segment
+  E              - Mark end of segment
+  N              - Focus segment name field
+  Space          - Play/Pause
+  , (comma)      - Back 1 frame
+  . (period)     - Forward 1 frame
+  Shift+←        - Back 10 frames
+  Shift+→        - Forward 10 frames
+  ← / →          - Seek backward/forward 5 seconds
+
+Output:
+  - timestamps.txt: Segment data for use with firetimer-cutvid.py
+  - Format: title;HH:MM:SS.mmm;HH:MM:SS.mmm
 
 Requirements:
-- PyQt5: pip install PyQt5
-- python-vlc: pip install python-vlc
+  - PyQt5: pip install PyQt5
+  - python-vlc: pip install python-vlc
+  - VLC media player installed on system
 
-Usage:
-python3 video_timestamp_recorder.py
+Features:
+  - Video-only playback (audio disabled for stability)
+  - Frame-by-frame precision navigation
+  - Live segment editing in text area
+  - Auto-generated segment names (Segment 1, Segment 2, etc.)
+  - Inline segment naming without modal dialogs
+  - Exports to simple 'timestamps.txt' format
 """
 
 import sys
@@ -600,12 +644,8 @@ class VideoPlayer(QMainWindow):
             QMessageBox.warning(self, "Warning", "No segments to export!")
             return
         
-        # Generate default filename based on video name
-        if self.current_video_path:
-            video_name = os.path.splitext(os.path.basename(self.current_video_path))[0]
-            default_filename = f"timestamps_{video_name}.txt"
-        else:
-            default_filename = "timestamps_export.txt"
+        # Use simple "timestamps.txt" filename
+        default_filename = "timestamps.txt"
             
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Save Timestamps", default_filename, "Text Files (*.txt)"

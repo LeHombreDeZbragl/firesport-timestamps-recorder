@@ -15,9 +15,14 @@ _firetimer_helper/
 *.mp4.webm
 
 # Generated timestamp files from the video recorder
-timestamps*.txt
+timestamps.txt
 segments*.txt
 output*.txt
+
+# Generated video folders and files
+out-parts/
+in-parts/
+final_*.mp4
 
 # Python
 __pycache__/
@@ -87,8 +92,5 @@ test_fixed/
 !requirements.txt
 !requirements_gui.txt
 !README.md
-!README_GUI.md
 !setup.sh
 !activate_env.sh
-!FRAME_NAVIGATION_GUIDE.md
-!GITIGNORE_STRATEGY.md

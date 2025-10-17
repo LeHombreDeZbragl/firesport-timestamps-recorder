@@ -1,12 +1,42 @@
 #!/usr/bin/env python3
 """
+firetimer-cutvid.py - Cut video by timestamps with overlay title and timer
+
 Usage:
   python3 firetimer-cutvid.py --source <video.mp4> --times <timestamps_file>
 
-Timestamps file format (each non-empty non-comment line):
-title;start_time;end_time
+Required Arguments:
+  --source, -s           Video source: local MP4 file path
+  --times, -t            Timestamps file path
 
-Creates a 'cut-vids' folder in the same directory as the source video.
+Timestamps File Format:
+  Each non-empty, non-comment line should contain:
+  title;start_time;end_time
+  
+  Example:
+    Introduction;00:00:10;00:02:30
+    Main Content;00:02:30;00:15:45
+    Conclusion;00:15:45;00:18:20
+
+Output:
+  - Creates 'out-parts/' folder in same directory as source video
+  - Each segment is saved with its title as filename
+  - Overlays title and timer on each segment
+  - Automatically joins all parts into final video
+
+Examples:
+  # Cut video using timestamps.txt
+  python3 firetimer-cutvid.py -s myvideo.mp4 -t timestamps.txt
+  
+  # Cut video with custom timestamps file
+  python3 firetimer-cutvid.py --source recording.mp4 --times segments.txt
+
+Features:
+  - Precise cutting with millisecond accuracy
+  - Title overlay on each segment (bottom left)
+  - Timer display starting from 00:00:00 (bottom right)
+  - Automatic filename sanitization from titles
+  - Auto-joins all segments into final video using firetimer-joinvids.py
 """
 import argparse
 import subprocess
@@ -21,9 +51,9 @@ def check_deps():
         sys.exit(1)
 
 def prepare_parts_dir(video_path):
-    """Create cut-vids directory in the same location as the video file."""
+    """Create out-parts directory in the same location as the video file."""
     video_dir = os.path.dirname(os.path.abspath(video_path))
-    parts_dir = os.path.join(video_dir, "cut-vids")
+    parts_dir = os.path.join(video_dir, "out-parts")
     if not os.path.exists(parts_dir):
         os.makedirs(parts_dir)
     return parts_dir
@@ -141,7 +171,24 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Cut video by timestamps file, overlay title+timer.")
+    parser = argparse.ArgumentParser(
+        description="Cut video by timestamps file with overlay title and timer.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Timestamps File Format:
+  Each line: title;start_time;end_time
+  Example: Introduction;00:00:10;00:02:30
+
+Output:
+  - Creates 'out-parts/' folder in same directory as source video
+  - Overlays title (bottom left) and timer (bottom right) on each segment
+  - Auto-joins segments into final video
+
+Examples:
+  python3 firetimer-cutvid.py -s myvideo.mp4 -t timestamps.txt
+  python3 firetimer-cutvid.py --source recording.mp4 --times segments.txt
+        """
+    )
     parser.add_argument("--source", "-s", required=True, help="Video source: local MP4 file path")
     parser.add_argument("--times", "-t", required=True, help="Timestamps file")
     args = parser.parse_args()
@@ -153,7 +200,7 @@ def main():
         print(f"ERROR: source file does not exist: {args.source}")
         sys.exit(1)
 
-    # Create cut-vids directory based on video location
+    # Create out-parts directory based on video location
     parts_dir = prepare_parts_dir(args.source)
     print(f"📁 Cut videos will be saved to: {parts_dir}")
 
@@ -174,6 +221,30 @@ def main():
         print(f"🗑️  Removed {parts_txt_path}")
 
     print(f"✅ All {len(parts)} cut videos have been saved to: {parts_dir}")
+    
+    # Automatically call joinvids.py to join the cut parts
+    print("\n🔗 Auto-joining cut parts...")
+    try:
+        joinvids_script = os.path.join(os.path.dirname(__file__), "firetimer-joinvids.py")
+        if not os.path.exists(joinvids_script):
+            print(f"⚠️  Warning: firetimer-joinvids.py not found at {joinvids_script}")
+            print("   You can manually join the parts later.")
+        else:
+            # Run joinvids.py with the parts directory
+            cmd = [sys.executable, joinvids_script, "--parts", parts_dir]
+            print(f"🚀 Running: {' '.join(cmd)}")
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                print("✅ Auto-join completed successfully!")
+            else:
+                print(f"⚠️  Auto-join failed with return code {result.returncode}")
+                if result.stderr:
+                    print(f"Error: {result.stderr}")
+                print("   You can manually join the parts later.")
+    except Exception as e:
+        print(f"⚠️  Error during auto-join: {e}")
+        print("   You can manually join the parts later.")
 
 if __name__ == "__main__":
     main()
