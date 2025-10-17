@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
 Usage:
-  python3 firetimer.py --source <video_or_url> --times <timestamps_file> [--out output.mp4]
+  python3 firetimer-cutvids.py --source <video.mp4> --times <timestamps_file>
 
 Timestamps file format (each non-empty non-comment line):
 title;start_time;end_time
+
+Creates a 'cut-vids' folder in the same directory as the source video.
 """
 import argparse
 import subprocess
@@ -12,33 +14,19 @@ import shutil
 import sys
 import os
 import re
-import yt_dlp
-
-HELPER_DIR = "_firetimer_helper"
 
 def check_deps():
     if shutil.which("ffmpeg") is None:
         print("ERROR: ffmpeg not found in PATH. Install ffmpeg and ensure it's on PATH.")
         sys.exit(1)
 
-def prepare_helper_dir():
-    if not os.path.exists(HELPER_DIR):
-        os.makedirs(HELPER_DIR)
-
-def download_video(url, filename=None):
-    if filename is None:
-        filename = os.path.join(HELPER_DIR, "input.mp4")
-    print(f"⬇️  Downloading video from {url} → {filename}")
-    ydl_opts = {
-        "outtmpl": filename,
-        "format": "bestvideo+bestaudio/best",
-        "merge_output_format": "mp4",
-        "quiet": False
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-    print("✅ Download complete.")
-    return filename
+def prepare_parts_dir(video_path):
+    """Create cut-vids directory in the same location as the video file."""
+    video_dir = os.path.dirname(os.path.abspath(video_path))
+    parts_dir = os.path.join(video_dir, "cut-vids")
+    if not os.path.exists(parts_dir):
+        os.makedirs(parts_dir)
+    return parts_dir
 
 def fix_timestamp(ts):
     ts = ts.strip()
@@ -82,8 +70,8 @@ def ff_escape_text(s):
     s = s.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:")
     return s
 
-def cut_and_label_segment(input_file, title, start, end, index):
-    out = os.path.join(HELPER_DIR, f"part{index}.mp4")
+def cut_and_label_segment(input_file, title, start, end, index, parts_dir):
+    out = os.path.join(parts_dir, f"part{index}.mp4")
     print(f"✂️  Cutting #{index + 1} '{title}' {start} → {end} → {out}")
     title_safe = ff_escape_text(title)
     pts_expr = "%{pts\\:hms}"
@@ -103,43 +91,23 @@ def cut_and_label_segment(input_file, title, start, end, index):
     subprocess.run(cmd, check=True)
     return out
 
-def join_parts(parts, output_file="output.mp4"):
-    print("🔗 Joining parts...")
-    parts_list_file = os.path.join(HELPER_DIR, "parts.txt")
-    with open(parts_list_file, "w", encoding="utf-8") as f:
-        for p in parts:
-            f.write(f"file '{os.path.abspath(p)}'\n")  # <-- use absolute paths here
-    cmd = [
-        "ffmpeg", "-f", "concat", "-safe", "0",
-        "-i", parts_list_file,
-        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k",
-        "-y", os.path.abspath(output_file)  # <-- optional: absolute output path
-    ]
-    subprocess.run(cmd, check=True)
-    print(f"✅ Final video: {output_file}")
-
 
 def main():
-    parser = argparse.ArgumentParser(description="Cut video by timestamps file, overlay title+timer, join parts.")
-    parser.add_argument("--source", "-s", required=True, help="Video source: local file path or YouTube URL")
+    parser = argparse.ArgumentParser(description="Cut video by timestamps file, overlay title+timer.")
+    parser.add_argument("--source", "-s", required=True, help="Video source: local MP4 file path")
     parser.add_argument("--times", "-t", required=True, help="Timestamps file")
-    parser.add_argument("--out", "-o", default="output.mp4", help="Output filename")
     args = parser.parse_args()
 
     check_deps()
-    prepare_helper_dir()
 
-    # Determine input file
-    src = args.source
-    input_file = os.path.join(HELPER_DIR, "input.mp4")
-    if re.match(r'^https?://', src):
-        input_file = download_video(src, filename=input_file)
-    else:
-        if not os.path.exists(src):
-            print("ERROR: source file does not exist:", src)
-            sys.exit(1)
-        input_file = src
+    # Check if source file exists
+    if not os.path.exists(args.source):
+        print(f"ERROR: source file does not exist: {args.source}")
+        sys.exit(1)
+
+    # Create cut-vids directory based on video location
+    parts_dir = prepare_parts_dir(args.source)
+    print(f"📁 Cut videos will be saved to: {parts_dir}")
 
     segments = parse_timestamps_file(args.times)
     if not segments:
@@ -148,10 +116,16 @@ def main():
 
     parts = []
     for i, (title, start, end) in enumerate(segments):
-        part = cut_and_label_segment(input_file, title, start, end, i)
+        part = cut_and_label_segment(args.source, title, start, end, i, parts_dir)
         parts.append(part)
 
-    join_parts(parts, args.out)
+    # Remove parts.txt file if it exists
+    parts_txt_path = os.path.join(parts_dir, "parts.txt")
+    if os.path.exists(parts_txt_path):
+        os.remove(parts_txt_path)
+        print(f"🗑️  Removed {parts_txt_path}")
+
+    print(f"✅ All {len(parts)} cut videos have been saved to: {parts_dir}")
 
 if __name__ == "__main__":
     main()
