@@ -1,4 +1,94 @@
+# FIRE Video Timestamp Recorder - Git Ignore
+
+# Project specific
 _firetimer_helper/
+
+# Video files (large files that shouldn't be in git)
 *.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
 *.mp4.webm
-*.txt
+
+# Generated timestamp files from the video recorder
+timestamps*.txt
+segments*.txt
+output*.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Test output
+test_*/
+test_fixed/
+
+# Keep these important files (negation patterns)
+!requirements.txt
+!requirements_gui.txt
+!README.md
+!README_GUI.md
+!setup.sh
+!activate_env.sh
+!FRAME_NAVIGATION_GUIDE.md
+!GITIGNORE_STRATEGY.md
