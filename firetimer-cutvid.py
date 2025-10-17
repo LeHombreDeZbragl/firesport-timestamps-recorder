@@ -70,22 +70,70 @@ def ff_escape_text(s):
     s = s.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:")
     return s
 
+def sanitize_filename(title):
+    """Convert title to safe filename by removing/replacing invalid characters."""
+    # Replace invalid filename characters with underscores
+    invalid_chars = '<>:"/\\|?*'
+    filename = title
+    for char in invalid_chars:
+        filename = filename.replace(char, '_')
+    # Replace spaces with underscores and remove multiple underscores
+    filename = filename.replace(' ', '_')
+    filename = '_'.join(filter(None, filename.split('_')))  # Remove empty parts
+    # Limit length and ensure it's not empty
+    filename = filename[:50] if filename else "untitled"
+    return filename
+
+def timestamp_to_seconds(timestamp):
+    """Convert HH:MM:SS.mmm to total seconds"""
+    parts = timestamp.split(':')
+    hours = int(parts[0])
+    minutes = int(parts[1])
+    seconds = float(parts[2])
+    return hours * 3600 + minutes * 60 + seconds
+
 def cut_and_label_segment(input_file, title, start, end, index, parts_dir):
-    out = os.path.join(parts_dir, f"part{index}.mp4")
+    # Use title as filename instead of generic part{index}
+    safe_filename = sanitize_filename(title)
+    out = os.path.join(parts_dir, f"{safe_filename}.mp4")
     print(f"✂️  Cutting #{index + 1} '{title}' {start} → {end} → {out}")
     title_safe = ff_escape_text(title)
-    pts_expr = "%{pts\\:hms}"
-    # Bottom-left now, bigger fonts
+    
+    # Calculate duration for proper cutting
+    start_seconds = timestamp_to_seconds(start)
+    end_seconds = timestamp_to_seconds(end)
+    duration = end_seconds - start_seconds
+    
+    # Break down the timer expression into clear steps:
+    # 1. Get seconds part (integer) - t will start from 0 due to setpts filter
+    seconds_part = "eif\\:t\\:d"
+    
+    # 2. Get milliseconds (0-99 from t*100)
+    milliseconds_raw = "mod(t*100\\,100)"
+    
+    # 3. Split milliseconds into tens and ones digits
+    tens_digit = f"eif\\:{milliseconds_raw}/10\\:d"
+    ones_digit = f"eif\\:mod({milliseconds_raw}\\,10)\\:d"
+    
+    # 4. Build complete timer string: "seconds.tensones"
+    timer_text = f"%{{{seconds_part}}}.%{{{tens_digit}}}%{{{ones_digit}}}"
+    
+    # Reset video timestamps to 0 and apply overlays
     vf = (
-        f"drawtext=text='{title_safe}':fontcolor=white:fontsize=56:box=1:boxcolor=black@0.5:x=10:y=h-th-60,"
-        f"drawtext=text='{pts_expr}':fontcolor=white:fontsize=56:box=1:boxcolor=black@0.5:x=w-tw-10:y=h-th-60"
+        f"setpts=PTS-STARTPTS,"  # Force reset timestamps to start from 0
+        f"drawtext=text='{title_safe}':fontcolor=white:fontsize=120:box=1:boxcolor=black@0.5:x=10:y=h-th-120,"
+        f"drawtext=text='{timer_text}':fontcolor=white:fontsize=120:box=1:boxcolor=black@0.5:x=w-tw-10:y=h-th-120"
     )
     cmd = [
         "ffmpeg",
-        "-ss", start, "-to", end, "-i", input_file,
+        "-ss", start, "-i", input_file,  # Seek before input for better timestamp reset
+        "-t", str(duration),  # Use duration instead of end time
         "-vf", vf,
-        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k",
+        "-c:v", "libx264", "-preset", "ultrafast",  # Much faster encoding
+        "-crf", "18",  # Better quality for faster preset
+        "-c:a", "aac", "-b:a", "128k",  # Re-encode audio to avoid sync issues
+        "-avoid_negative_ts", "make_zero",  # Handle timing issues
+        "-fflags", "+genpts",  # Generate proper timestamps
         "-y", out
     ]
     subprocess.run(cmd, check=True)
