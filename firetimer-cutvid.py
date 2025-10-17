@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Usage:
-  python3 firetimer-cutvids.py --source <video.mp4> --times <timestamps_file>
+  python3 firetimer-cutvid.py --source <video.mp4> --times <timestamps_file>
 
 Timestamps file format (each non-empty non-comment line):
 title;start_time;end_time
