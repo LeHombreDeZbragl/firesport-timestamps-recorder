@@ -8,7 +8,6 @@ Usage:
 Required Arguments:
   --url, -u              YouTube URL to download
   --name, -n             Video filename (without .mp4 extension)
-                         Also used as folder name if --folder is not specified
 
 Optional Arguments:
   --folder, -f           Output folder (default: uses --name as folder name)
@@ -22,7 +21,7 @@ Time Format:
   - HH:MM:SS: 1:30:45
 
 Output:
-  - Downloads to <folder>/in-parts/ directory
+  - Downloads to <folder>/parts/ directory
   - Automatically joins parts into final video in <folder>/
 
 Examples:
@@ -64,19 +63,19 @@ def seconds_to_time_string(seconds):
         return f"{minutes}:{secs:02d}"
 
 def parse_time_to_seconds(time_str):
-    """Convert time string (HH:MM:SS or seconds) to seconds"""
+    """Convert time string (minutes or HH:MM:SS) to seconds"""
     if not time_str:
         return None
-    
+
     try:
-        # If it's just a number, treat as seconds
+        # If it's just a number, treat as minutes
         if time_str.isdigit():
-            return int(time_str)
-        
+            return int(time_str) * 60  # Convert minutes to seconds
+
         # Parse HH:MM:SS format
         parts = time_str.split(':')
         if len(parts) == 1:
-            return int(parts[0])
+            return int(parts[0]) * 60  # Convert minutes to seconds
         elif len(parts) == 2:
             return int(parts[0]) * 60 + int(parts[1])
         elif len(parts) == 3:
@@ -85,16 +84,16 @@ def parse_time_to_seconds(time_str):
             raise ValueError(f"Invalid time format: {time_str}")
     except ValueError as e:
         print(f"❌ Error parsing time '{time_str}': {e}")
-        print("   Supported formats: seconds (120), MM:SS (2:30), HH:MM:SS (1:30:45)")
+        print("   Supported formats: minutes (10), MM:SS (2:30), HH:MM:SS (1:30:45)")
         sys.exit(1)
 
 def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=10, start_time="0", end_time=None):
     """Download video in chunks directly from YouTube to save disk space"""
-    # Create main folder and in-parts subfolder
+    # Create main folder and parts subfolder
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     
-    parts_folder = os.path.join(output_folder, "in-parts")
+    parts_folder = os.path.join(output_folder, "parts")
     if not os.path.exists(parts_folder):
         os.makedirs(parts_folder)
     
@@ -136,7 +135,7 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=10, s
     video_url = best_format['url']
     
     # Parse start and end times
-    start_seconds = parse_time_to_seconds(start_time)
+    start_seconds = parse_time_to_seconds(start_time) if start_time else 0
     end_seconds = parse_time_to_seconds(end_time) if end_time else duration
     
     # Validate time ranges
@@ -155,7 +154,8 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=10, s
     download_duration = end_seconds - start_seconds
     
     print(f"📊 Video duration: {seconds_to_time_string(duration)} ({duration/60:.1f} minutes)")
-    print(f"🎯 Download range: {seconds_to_time_string(start_seconds)} - {seconds_to_time_string(end_seconds)} (Duration: {seconds_to_time_string(download_duration)})")
+    if start_seconds > 0 or end_seconds < duration:
+        print(f"🎯 Download range: {seconds_to_time_string(start_seconds)} - {seconds_to_time_string(end_seconds)} (Duration: {seconds_to_time_string(download_duration)})")
     print(f"📦 Downloading {chunk_minutes}-minute chunks directly")
     
     chunk_duration_seconds = chunk_minutes * 60
@@ -177,31 +177,28 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=10, s
         print(f"⬇️  Downloading part {i+1}/{num_chunks}: {part_name}")
         print(f"    Time range: {seconds_to_time_string(chunk_start)} - {seconds_to_time_string(chunk_end)}")
         
-        # Download chunk using yt-dlp with external_downloader set to ffmpeg.
-        # This approach downloads the exact time range using yt-dlp's built-in
-        # segment extraction, which handles keyframes correctly and produces
-        # clean chunks suitable for concatenation.
+        # Download chunk directly using ffmpeg with the video URL
+        # This is the most reliable method - stream from URL and copy exact time range
+        cmd = [
+            "ffmpeg",
+            "-ss", str(chunk_start),  # Seek to start time
+            "-i", video_url,          # Input from YouTube URL
+            "-t", str(chunk_end - chunk_start),  # Duration of chunk
+            "-c", "copy",             # Copy streams (no re-encoding)
+            "-avoid_negative_ts", "make_zero",
+            "-f", "mp4",              # Output format
+            "-y", part_path           # Output file
+        ]
+        
         try:
-            chunk_opts = {
-                "outtmpl": part_path,
-                "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-                "merge_output_format": "mp4",
-                "quiet": True,
-                "no_warnings": True,
-                # Use external downloader (ffmpeg) with download sections
-                "download_ranges": yt_dlp.utils.download_range_func(None, [(chunk_start, chunk_end)]),
-            }
-            
-            with yt_dlp.YoutubeDL(chunk_opts) as ydl:
-                ydl.download([url])
-            
-            if os.path.exists(part_path):
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0 and os.path.exists(part_path):
                 downloaded_parts.append(part_path)
                 size_mb = os.path.getsize(part_path) / (1024 * 1024)
                 print(f"    ✅ Downloaded: {size_mb:.1f}MB")
             else:
-                print(f"    ❌ Download failed - file not created")
-                # Fallback: try simpler approach with postprocessor_args
+                print(f"    ❌ Failed to download part")
+                # If direct streaming fails, fall back to yt-dlp for this chunk
                 print(f"    🔄 Trying fallback method...")
                 try:
                     fallback_opts = {
@@ -211,20 +208,37 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=10, s
                         "quiet": True,
                     }
                     with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                        info = ydl.extract_info(url, download=False)
-                        # Download full video then trim with ffmpeg
                         ydl.download([url])
                     
-                    # Manual trim with ffmpeg if needed
                     if os.path.exists(part_path):
-                        downloaded_parts.append(part_path)
-                        size_mb = os.path.getsize(part_path) / (1024 * 1024)
-                        print(f"    ✅ Fallback success: {size_mb:.1f}MB")
+                        # Trim the downloaded file to the correct time range
+                        temp_path = part_path + ".temp.mp4"
+                        os.rename(part_path, temp_path)
+                        
+                        trim_cmd = [
+                            "ffmpeg",
+                            "-ss", str(chunk_start),
+                            "-i", temp_path,
+                            "-t", str(chunk_end - chunk_start),
+                            "-c", "copy",
+                            "-y", part_path
+                        ]
+                        subprocess.run(trim_cmd, capture_output=True)
+                        
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                        
+                        if os.path.exists(part_path):
+                            downloaded_parts.append(part_path)
+                            size_mb = os.path.getsize(part_path) / (1024 * 1024)
+                            print(f"    ✅ Fallback success: {size_mb:.1f}MB")
+                        else:
+                            print(f"    ❌ Fallback also failed")
                     else:
-                        print(f"    ❌ Fallback also failed")
+                        print(f"    ❌ Fallback download failed")
                 except Exception as fe:
                     print(f"    ❌ Fallback error: {fe}")
-                    
+                
         except Exception as e:
             print(f"    ❌ Error downloading part {i+1}: {e}")
             continue
@@ -307,11 +321,11 @@ Examples:
   python3 firetimer-ytdownload.py -u https://youtube.com/watch?v=xyz -n clip -s 300 -e 900
 
 Time Format: seconds (120), MM:SS (2:30), or HH:MM:SS (1:30:45)
-Output: Downloads to <folder>/in-parts/ directory, joins into final video in <folder>/
+Output: Downloads to <folder>/parts/ directory, joins into final video in <folder>/
         """
     )
     parser.add_argument("--url", "-u", required=True, help="YouTube URL to download")
-    parser.add_argument("--name", "-n", required=True, help="Video filename (without .mp4 extension). Also used as folder name if --folder not specified")
+    parser.add_argument("--name", "-n", required=True, help="Video filename (without .mp4 extension)")
     parser.add_argument("--folder", "-f", help="Output folder (default: uses --name as folder name)")
     parser.add_argument("--chunk-minutes", "-c", type=int, default=10, help="Chunk duration in minutes (default: 10)")
     parser.add_argument("--start", "--from", "-s", type=str, default="0", help="Start time in HH:MM:SS, MM:SS, or seconds (default: 0)")
@@ -343,7 +357,7 @@ Output: Downloads to <folder>/in-parts/ directory, joins into final video in <fo
             join_videos(parts, final_path)
             final_size = os.path.getsize(final_path) / (1024 * 1024)
             print(f"🎬 Final video: {final_name} ({final_size:.1f}MB)")
-            print(f"📁 Parts saved in: {os.path.join(args.folder, 'in-parts')}")
+            print(f"📁 Parts saved in: {os.path.join(args.folder, 'parts')}")
         except Exception as e:
             print(f"❌ Failed to join videos: {e}")
     else:

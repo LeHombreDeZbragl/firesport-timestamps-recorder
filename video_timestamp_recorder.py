@@ -375,7 +375,7 @@ class VideoPlayer(QMainWindow):
                 self.media_player.pause()
                 self.play_pause_button.setText("▶️ Play")
             
-            # Get current time and move forward by one frame duration
+            # Get current time and move forward to the next keyframe
             current_time = self.media_player.get_time()
             if current_time >= 0:
                 frame_duration = self.get_frame_duration_ms()
@@ -393,7 +393,7 @@ class VideoPlayer(QMainWindow):
                 self.media_player.pause()
                 self.play_pause_button.setText("▶️ Play")
             
-            # Get current time and move backward by one frame duration
+            # Get current time and move backward to the previous keyframe
             current_time = self.media_player.get_time()
             if current_time >= 0:
                 frame_duration = self.get_frame_duration_ms()
@@ -666,9 +666,18 @@ class VideoPlayer(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Export Error", f"Failed to export timestamps:\n{str(e)}")
 
+    def closeEvent(self, event):
+        """Handle application close event for cleanup."""
+        if self.media_player:
+            self.media_player.stop()
+            self.media_player.release()
+        if self.instance:
+            self.instance.release()
+        event.accept()
+
 def main():
     app = QApplication(sys.argv)
-    
+
     # Check for VLC
     try:
         vlc.Instance()
@@ -681,11 +690,14 @@ def main():
             f"Error: {str(e)}"
         )
         sys.exit(1)
-    
+
     player = VideoPlayer()
     player.show()
-    
-    sys.exit(app.exec_())
+
+    # Ensure proper cleanup on exit
+    exit_code = app.exec_()
+    del player  # Explicitly delete player to ensure cleanup
+    sys.exit(exit_code)
 
 if __name__ == "__main__":
     main()

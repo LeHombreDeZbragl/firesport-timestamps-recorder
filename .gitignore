@@ -15,7 +15,7 @@ _firetimer_helper/
 *.mp4.webm
 
 # Generated timestamp files from the video recorder
-timestamps.txt
+timestamps*.txt
 segments*.txt
 output*.txt
 
