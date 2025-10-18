@@ -50,6 +50,8 @@ import os
 import sys
 import subprocess
 import yt_dlp
+import time
+from datetime import datetime
 
 def seconds_to_time_string(seconds):
     """Convert seconds to HH:MM:SS format"""
@@ -89,6 +91,9 @@ def parse_time_to_seconds(time_str):
 
 def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=10, start_time="0", end_time=None):
     """Download video in chunks directly from YouTube to save disk space"""
+    start_time_real = datetime.now()
+    print(f"🕒 Recording started at: {start_time_real.strftime('%Y-%m-%d %H:%M:%S')}")
+
     # Create main folder and parts subfolder
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -167,16 +172,18 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=10, s
     for i in range(num_chunks):
         chunk_start = start_seconds + (i * chunk_duration_seconds)
         chunk_end = min(chunk_start + chunk_duration_seconds, end_seconds)
-        
+
         if chunk_start >= end_seconds:
             break
-            
+
         part_name = f"{base_name}_part{i+1:02d}.mp4"
         part_path = os.path.join(parts_folder, part_name)
-        
+
         print(f"⬇️  Downloading part {i+1}/{num_chunks}: {part_name}")
         print(f"    Time range: {seconds_to_time_string(chunk_start)} - {seconds_to_time_string(chunk_end)}")
-        
+
+        segment_start_time = time.time()
+
         # Download chunk directly using ffmpeg with the video URL
         # This is the most reliable method - stream from URL and copy exact time range
         cmd = [
@@ -242,7 +249,16 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=10, s
         except Exception as e:
             print(f"    ❌ Error downloading part {i+1}: {e}")
             continue
-    
+
+        segment_end_time = time.time()
+        segment_duration = segment_end_time - segment_start_time
+        print(f"🕒 Segment {i+1} completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"    ⏱️ Duration: {segment_duration:.2f} seconds")
+
+    total_duration = time.time() - segment_start_time
+    print(f"🕒 Total recording completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"    ⏱️ Total duration: {total_duration:.2f} seconds")
+
     return downloaded_parts
 
 def download_video_full(url, output_folder, video_name):
