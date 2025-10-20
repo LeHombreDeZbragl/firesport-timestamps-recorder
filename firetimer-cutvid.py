@@ -161,10 +161,17 @@ def timestamp_to_seconds(timestamp):
     seconds = float(parts[2])
     return hours * 3600 + minutes * 60 + seconds
 
-def cut_and_label_segment(input_file, title, start, end, index, parts_dir, splits=None):
+def cut_and_label_segment(input_file, title, start, end, index, parts_dir, splits=None, label=None, order_prefix=None):
     # Use title as filename instead of generic part{index}
     safe_filename = sanitize_filename(title)
-    out = os.path.join(parts_dir, f"{safe_filename}.mp4")
+    
+    # Add ordering prefix to filename if provided
+    if order_prefix is not None:
+        filename = f"{order_prefix:03d}_{safe_filename}.mp4"
+    else:
+        filename = f"{safe_filename}.mp4"
+    
+    out = os.path.join(parts_dir, filename)
     print(f"✂️  Cutting #{index + 1} '{title}' {start} → {end} → {out}")
     title_safe = ff_escape_text(title)
     
@@ -239,6 +246,13 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     filters.append(
         f"drawtext=text='{title_safe}':fontcolor=white:fontsize=80:box=1:boxcolor=black@0.5:x=10:y=h-th-10"
     )
+    
+    # Label overlay (top left, if provided) - either placement or attack number
+    if label is not None:
+        label_safe = ff_escape_text(label)
+        filters.append(
+            f"drawtext=text='{label_safe}':fontcolor=white:fontsize=80:box=1:boxcolor=black@0.5:x=10:y=10"
+        )
     
     # Timer overlay (bottom right, smaller font, at the very bottom)
     filters.append(
@@ -323,11 +337,12 @@ Output:
 
 Examples:
   python3 firetimer-cutvid.py -s myvideo.mp4 -t timestamps.txt
-  python3 firetimer-cutvid.py --source recording.mp4 --times segments.txt
+  python3 firetimer-cutvid.py --source recording.mp4 --times segments.txt -z
         """
     )
     parser.add_argument("--source", "-s", required=True, help="Video source: local MP4 file path")
     parser.add_argument("--times", "-t", required=True, help="Timestamps file")
+    parser.add_argument("-z", action="store_true", help="Add placement labels (1. místo, 2. místo, etc.)")
     args = parser.parse_args()
 
     check_deps()
@@ -346,16 +361,97 @@ Examples:
         print("No valid segments found. Exiting.")
         sys.exit(1)
 
+    # Sort segments by final time only if -z flag is set
+    if args.z:
+        def get_final_time(seg_data):
+            """Calculate the final time for sorting (max of LP and PP relative to start)
+            Returns (is_valid, final_time) where is_valid indicates if all required splits exist
+            """
+            if len(seg_data) == 3:
+                # Old format without splits - invalid for competition
+                return (False, float('inf'))
+            else:
+                # New format with splits
+                title, start, end, splits = seg_data
+                
+                if not splits or 'start' not in splits or not splits['start'].strip():
+                    # Missing start split - invalid
+                    return (False, float('inf'))
+                
+                try:
+                    start_split_seconds = timestamp_to_seconds(splits['start'].strip())
+                    
+                    lp_seconds = 0
+                    pp_seconds = 0
+                    
+                    if 'LP' in splits and splits['LP'].strip():
+                        try:
+                            lp_seconds = timestamp_to_seconds(splits['LP'].strip())
+                        except:
+                            pass
+                    
+                    if 'PP' in splits and splits['PP'].strip():
+                        try:
+                            pp_seconds = timestamp_to_seconds(splits['PP'].strip())
+                        except:
+                            pass
+                    
+                    # If both LP and PP are missing or zero - invalid
+                    if lp_seconds == 0 and pp_seconds == 0:
+                        return (False, float('inf'))
+                    
+                    # Return the relative time of max(LP, PP) from start
+                    max_split = max(lp_seconds, pp_seconds)
+                    return (True, max_split - start_split_seconds)
+                except:
+                    return (False, float('inf'))
+        
+        # Sort segments by final time (lowest to highest), invalid ones go last
+        segments_sorted = sorted(segments, key=get_final_time)
+        print(f"📊 Sorted {len(segments_sorted)} segments by final time (lowest to highest)")
+        
+        # Count valid segments for placement numbering
+        valid_count = sum(1 for seg in segments_sorted if get_final_time(seg)[0])
+        print(f"   Valid segments: {valid_count}, Invalid (NP): {len(segments_sorted) - valid_count}")
+    else:
+        # No sorting - keep original order from file
+        segments_sorted = segments
+        print(f"📋 Processing {len(segments_sorted)} segments in original order")
+
     parts = []
-    for i, seg_data in enumerate(segments):
+    placement_counter = 1  # Counter for valid placements
+    invalid_counter = 999  # Counter for invalid segments (counts down from 999)
+    
+    for i, seg_data in enumerate(segments_sorted):
         # Unpack based on tuple length (old format: 3, new format: 4)
         if len(seg_data) == 3:
             title, start, end = seg_data
             splits = None
+            is_valid = False
         else:
             title, start, end, splits = seg_data
+            # Check if segment has valid splits for placement
+            if args.z:
+                is_valid, _ = get_final_time(seg_data)
+            else:
+                is_valid = True  # All segments are valid when not sorting
         
-        part = cut_and_label_segment(args.source, title, start, end, i, parts_dir, splits)
+        # Determine label and order prefix based on -z flag and validity
+        if args.z:
+            if is_valid:
+                label = f"{placement_counter}. místo"
+                order_prefix = placement_counter
+                placement_counter += 1
+            else:
+                label = "NP"
+                order_prefix = invalid_counter
+                invalid_counter -= 1
+        else:
+            # Without -z, show attack number (in original order)
+            label = f"{i + 1}. útok"
+            order_prefix = i + 1
+        
+        part = cut_and_label_segment(args.source, title, start, end, i, parts_dir, splits, label, order_prefix)
         parts.append(part)
 
     # Remove parts.txt file if it exists
