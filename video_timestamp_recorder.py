@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-video_timestamp_recorder.py - GUI application for marking video timestamps
+video_timestamp_recorder.py - GUI application for marking video timestamps with splits
 
 Description:
-  A video-only player for recording timestamped segments with frame-by-frame precision.
+  A video-only player for recording timestamped segments with frame-by-frame precision and split points.
   Audio is disabled for better performance and stability.
   
 Usage:
@@ -12,7 +12,7 @@ Usage:
 Interface:
   - Load Video: Opens file dialog to select MP4 video
   - Play/Pause: Space bar or button
-  - Seek: Click on progress bar or use arrow keys
+  - Seek: Click on progress bar or use arrow keys (5 seconds)
   - Frame Navigation:
     * , (comma) - Back 1 frame
     * . (period) - Forward 1 frame
@@ -20,16 +20,19 @@ Interface:
     * Shift+→ - Forward 10 frames
   
 Marking Segments:
-  1. Position video at start point → Press S or click "Start Segment"
-  2. (Optional) Type segment name in the text field → Press N to focus
-  3. Position video at end point → Press E or click "End Segment"
-  4. Segment is automatically saved with name (or auto-generated number)
-  5. All segments exported to 'timestamps.txt' in format:
-     title;start_time;end_time
+  1. Position video at start point → Press Q or click "Začátek"
+  2. (Optional) Mark up to 8 split points → Press W/E/R/T/Y/U/I/O
+  3. (Optional) Type segment name in the text field → Press N to focus
+  4. Position video at end point → Press P or click "Konec"
+  5. Segment is automatically saved with name (or auto-generated number)
+  6. All segments exported to 'timestamps.txt' in format:
+     title;start_time;split1;split2;...;split8;end_time
 
 Keyboard Shortcuts:
-  S              - Mark start of segment
-  E              - Mark end of segment
+  Q              - Mark začátek (start)
+  W, E, R, T,    - Mark splits 1-8
+  Y, U, I, O
+  P              - Mark konec (end)
   N              - Focus segment name field
   Space          - Play/Pause
   , (comma)      - Back 1 frame
@@ -37,10 +40,11 @@ Keyboard Shortcuts:
   Shift+←        - Back 10 frames
   Shift+→        - Forward 10 frames
   ← / →          - Seek backward/forward 5 seconds
+  Escape         - Unfocus text fields
 
 Output:
   - timestamps.txt: Segment data for use with firetimer-cutvid.py
-  - Format: title;HH:MM:SS.mmm;HH:MM:SS.mmm
+  - Format: title;HH:MM:SS.mmm;split1;split2;...;split8;HH:MM:SS.mmm
 
 Requirements:
   - PyQt5: pip install PyQt5
@@ -50,10 +54,11 @@ Requirements:
 Features:
   - Video-only playback (audio disabled for stability)
   - Frame-by-frame precision navigation
-  - Live segment editing in text area
+  - 8 split points per segment (Czech labels)
+  - Live segment editing with editable timestamps
   - Auto-generated segment names (Segment 1, Segment 2, etc.)
   - Inline segment naming without modal dialogs
-  - Exports to simple 'timestamps.txt' format
+  - Exports to extended 'timestamps.txt' format with splits
 """
 
 import sys
@@ -73,7 +78,7 @@ class VideoPlayer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Video Timestamp Recorder (Video Only)")
-        self.setGeometry(100, 100, 1200, 800)
+        self.setGeometry(100, 100, 1400, 800)
         
         # Video player variables - video only, no audio
         vlc_args = [
@@ -102,13 +107,17 @@ class VideoPlayer(QMainWindow):
         
         # Timestamp recording variables
         self.start_timestamp = None
+        self.split_timestamps = [None] * 8  # 8 split points
         self.segments = []
         self.output_file = "timestamps.txt"
+        
+        # Split names in Czech
+        self.split_names = ['start', 'koš', 'voda', 'kohout', 'rozdělovač', 'výstřik', 'LP', 'PP']
         
         # Timer for updating current time display
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_time_display)
-        self.timer.start(250)  # Update every 250ms (less frequent to reduce interference)
+        self.timer.start(250)  # Update every 250ms
         
         self.init_ui()
         self.setup_shortcuts()
@@ -117,13 +126,17 @@ class VideoPlayer(QMainWindow):
         # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        
+        # Left side: Video and controls
+        left_layout = QVBoxLayout()
         
         # Video frame
         self.video_frame = QFrame()
         self.video_frame.setStyleSheet("background-color: black;")
-        self.video_frame.setMinimumHeight(400)
-        main_layout.addWidget(self.video_frame)
+        self.video_frame.setMinimumHeight(600)
+        self.video_frame.setMinimumWidth(800)
+        left_layout.addWidget(self.video_frame)
         
         # Set the video output to the frame
         if sys.platform.startswith('linux'):
@@ -141,7 +154,7 @@ class VideoPlayer(QMainWindow):
         time_layout.addWidget(QLabel("Current Time:"))
         time_layout.addWidget(self.current_time_label)
         time_layout.addStretch()
-        main_layout.addLayout(time_layout)
+        left_layout.addLayout(time_layout)
         
         # Progress slider
         self.progress_slider = QSlider(Qt.Horizontal)
@@ -149,119 +162,187 @@ class VideoPlayer(QMainWindow):
         self.progress_slider.setMaximum(1000)
         self.progress_slider.sliderPressed.connect(self.slider_pressed)
         self.progress_slider.sliderReleased.connect(self.slider_released)
-        main_layout.addWidget(self.progress_slider)
+        left_layout.addWidget(self.progress_slider)
         
         # Control buttons
         controls_group = QGroupBox("Video Controls")
-        controls_layout = QHBoxLayout(controls_group)
+        controls_layout = QVBoxLayout(controls_group)
         
+        # First row: Load, Play, Stop
+        row1_layout = QHBoxLayout()
         self.load_button = QPushButton("📁 Load Video")
         self.load_button.clicked.connect(self.load_video)
-        controls_layout.addWidget(self.load_button)
+        row1_layout.addWidget(self.load_button)
         
         self.play_pause_button = QPushButton("▶️ Play")
         self.play_pause_button.clicked.connect(self.toggle_play_pause)
         self.play_pause_button.setEnabled(False)
-        controls_layout.addWidget(self.play_pause_button)
+        row1_layout.addWidget(self.play_pause_button)
         
         self.stop_button = QPushButton("⏹️ Stop")
         self.stop_button.clicked.connect(self.stop_video)
         self.stop_button.setEnabled(False)
-        controls_layout.addWidget(self.stop_button)
+        row1_layout.addWidget(self.stop_button)
+        controls_layout.addLayout(row1_layout)
         
-        # Frame navigation controls
-        self.frame_back_button = QPushButton("⏪ Frame Back (,)")
+        # Second row: Frame and seek controls
+        row2_layout = QHBoxLayout()
+        self.seek_back_button = QPushButton("⏪ -5s (←)")
+        self.seek_back_button.clicked.connect(self.seek_backward_5s)
+        self.seek_back_button.setEnabled(False)
+        row2_layout.addWidget(self.seek_back_button)
+        
+        self.frame_back_button = QPushButton("◀ Frame (,)")
         self.frame_back_button.clicked.connect(self.frame_backward)
         self.frame_back_button.setEnabled(False)
-        self.frame_back_button.setToolTip("Move one frame backward\n• Comma (,) or Left arrow: 1 frame back\n• Shift+Left arrow: 10 frames back")
-        controls_layout.addWidget(self.frame_back_button)
+        row2_layout.addWidget(self.frame_back_button)
         
-        self.frame_forward_button = QPushButton("⏩ Frame Forward (.)")
+        self.frame_forward_button = QPushButton("▶ Frame (.)")
         self.frame_forward_button.clicked.connect(self.frame_forward)
         self.frame_forward_button.setEnabled(False)
-        self.frame_forward_button.setToolTip("Move one frame forward\n• Period (.) or Right arrow: 1 frame forward\n• Shift+Right arrow: 10 frames forward")
-        controls_layout.addWidget(self.frame_forward_button)
+        row2_layout.addWidget(self.frame_forward_button)
         
-        controls_layout.addStretch()
-        main_layout.addWidget(controls_group)
+        self.seek_forward_button = QPushButton("⏩ +5s (→)")
+        self.seek_forward_button.clicked.connect(self.seek_forward_5s)
+        self.seek_forward_button.setEnabled(False)
+        row2_layout.addWidget(self.seek_forward_button)
+        controls_layout.addLayout(row2_layout)
+        
+        left_layout.addWidget(controls_group)
+        
+        # Add left layout to main layout
+        main_layout.addLayout(left_layout, stretch=3)
+        
+        # Right side: Timestamp recording
+        right_layout = QVBoxLayout()
         
         # Timestamp recording controls
         timestamp_group = QGroupBox("Timestamp Recording")
         timestamp_layout = QVBoxLayout(timestamp_group)
         
-        # Button row
-        button_layout = QHBoxLayout()
-        
-        self.start_button = QPushButton("🟢 Save Start (S)")
-        self.start_button.clicked.connect(self.save_start_timestamp)
-        self.start_button.setEnabled(False)
-        button_layout.addWidget(self.start_button)
-        
-        self.end_button = QPushButton("🔴 Save End (E)")
-        self.end_button.clicked.connect(self.save_end_timestamp)
-        self.end_button.setEnabled(False)
-        button_layout.addWidget(self.end_button)
-        
-        self.clear_button = QPushButton("🗑️ Clear Segments")
-        self.clear_button.clicked.connect(self.clear_segments)
-        button_layout.addWidget(self.clear_button)
-        
-        self.export_button = QPushButton("💾 Export Timestamps")
-        self.export_button.clicked.connect(self.export_timestamps)
-        button_layout.addWidget(self.export_button)
-        
-        timestamp_layout.addLayout(button_layout)
-        
-        # Segment naming input
-        naming_layout = QHBoxLayout()
-        naming_layout.addWidget(QLabel("Segment Name:"))
+        # Segment naming input at the top
+        naming_layout = QVBoxLayout()
+        naming_layout.addWidget(QLabel("Segment Name (N):"))
         
         self.segment_name_input = QLineEdit()
         self.segment_name_input.setPlaceholderText("Enter segment name (optional)")
-        self.segment_name_input.setToolTip("Enter a custom name for the segment, or leave empty for auto-naming.\nPress Enter to save segment with this name.\nPress N to focus this field.")
-        self.segment_name_input.returnPressed.connect(self.save_end_timestamp)  # Allow Enter key to save
+        self.segment_name_input.returnPressed.connect(self.save_end_timestamp)
         naming_layout.addWidget(self.segment_name_input)
-        
         timestamp_layout.addLayout(naming_layout)
         
-        timestamp_layout.addStretch()
-        main_layout.addWidget(timestamp_group)
+        # Start button with editable time
+        start_layout = QHBoxLayout()
+        self.start_button = QPushButton("🟢 Začátek (Q)")
+        self.start_button.clicked.connect(self.save_start_timestamp)
+        self.start_button.setEnabled(False)
+        self.start_button.setMinimumWidth(150)
+        start_layout.addWidget(self.start_button)
         
-        # Status display
-        status_layout = QHBoxLayout()
-        self.start_time_label = QLabel("Start: Not set")
-        self.start_time_label.setStyleSheet("color: green; font-weight: bold;")
-        status_layout.addWidget(self.start_time_label)
+        self.start_time_input = QLineEdit("00:00:00.000")
+        self.start_time_input.setMaximumWidth(120)
+        self.start_time_input.setStyleSheet("color: green; font-weight: bold;")
+        self.start_time_input.textChanged.connect(self.on_start_time_edited)
+        start_layout.addWidget(self.start_time_input)
+        timestamp_layout.addLayout(start_layout)
         
+        # Split buttons with inline editable time (absolute and relative)
+        self.split_buttons = []
+        self.split_time_inputs = []
+        self.split_relative_inputs = []
+        split_keys = ['W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O']
+        
+        for i in range(8):
+            split_layout = QHBoxLayout()
+            btn = QPushButton(f"{self.split_names[i]} ({split_keys[i]})")
+            btn.clicked.connect(lambda checked, idx=i: self.save_split_timestamp(idx))
+            btn.setEnabled(False)
+            btn.setMinimumWidth(120)
+            self.split_buttons.append(btn)
+            split_layout.addWidget(btn)
+            
+            # Absolute time
+            time_input = QLineEdit("00:00:00.000")
+            time_input.setMaximumWidth(110)
+            time_input.setStyleSheet("color: orange; font-size: 9pt;")
+            time_input.textChanged.connect(lambda text, idx=i: self.on_split_absolute_time_edited(idx, text))
+            self.split_time_inputs.append(time_input)
+            split_layout.addWidget(time_input)
+            
+            # Relative time (from split 1 "start") - format: 00.000 (seconds with 3 decimals)
+            relative_input = QLineEdit("0.000")
+            relative_input.setMaximumWidth(70)
+            relative_input.setStyleSheet("color: gray; font-size: 9pt;")
+            relative_input.textChanged.connect(lambda text, idx=i: self.on_split_relative_time_edited(idx, text))
+            self.split_relative_inputs.append(relative_input)
+            split_layout.addWidget(relative_input)
+            
+            timestamp_layout.addLayout(split_layout)
+        
+        # End button with editable time
+        end_layout = QHBoxLayout()
+        self.end_button = QPushButton("🔴 Konec (P)")
+        self.end_button.clicked.connect(self.save_end_timestamp)
+        self.end_button.setEnabled(False)
+        self.end_button.setMinimumWidth(150)
+        end_layout.addWidget(self.end_button)
+        
+        self.end_time_input = QLineEdit("00:00:00.000")
+        self.end_time_input.setMaximumWidth(120)
+        self.end_time_input.setStyleSheet("color: red; font-weight: bold;")
+        end_layout.addWidget(self.end_time_input)
+        timestamp_layout.addLayout(end_layout)
+        
+        # Action buttons
+        action_layout = QHBoxLayout()
+        self.clear_button = QPushButton("🗑️ Clear")
+        self.clear_button.clicked.connect(self.clear_segments)
+        action_layout.addWidget(self.clear_button)
+        
+        self.export_button = QPushButton("💾 Export")
+        self.export_button.clicked.connect(self.export_timestamps)
+        action_layout.addWidget(self.export_button)
+        timestamp_layout.addLayout(action_layout)
+        
+        # Segments count
         self.segments_count_label = QLabel("Segments: 0")
         self.segments_count_label.setStyleSheet("color: blue; font-weight: bold;")
-        status_layout.addWidget(self.segments_count_label)
-        status_layout.addStretch()
-        main_layout.addLayout(status_layout)
+        timestamp_layout.addWidget(self.segments_count_label)
+        
+        right_layout.addWidget(timestamp_group)
         
         # Segments display
         segments_group = QGroupBox("Recorded Segments")
         segments_layout = QVBoxLayout(segments_group)
         
         self.segments_display = QTextEdit()
-        self.segments_display.setMaximumHeight(150)
-        self.segments_display.setReadOnly(False)  # Make editable
-        self.segments_display.setFont(QFont("Courier", 10))
+        self.segments_display.setReadOnly(False)
+        self.segments_display.setFont(QFont("Courier", 9))
         self.segments_display.setPlaceholderText("Timestamps will appear here. You can edit them directly.")
         self.segments_display.textChanged.connect(self.parse_segments_from_text)
         segments_layout.addWidget(self.segments_display)
         
-        main_layout.addWidget(segments_group)
+        right_layout.addWidget(segments_group)
+        
+        # Add right layout to main layout
+        main_layout.addLayout(right_layout, stretch=1)
         
     def setup_shortcuts(self):
         """Setup keyboard shortcuts"""
-        # S key for start timestamp
-        self.start_shortcut = QShortcut(QKeySequence("S"), self)
+        # Q key for start timestamp
+        self.start_shortcut = QShortcut(QKeySequence("Q"), self)
         self.start_shortcut.activated.connect(self.save_start_timestamp)
         
-        # E key for end timestamp
-        self.end_shortcut = QShortcut(QKeySequence("E"), self)
+        # P key for end timestamp
+        self.end_shortcut = QShortcut(QKeySequence("P"), self)
         self.end_shortcut.activated.connect(self.save_end_timestamp)
+        
+        # W, E, R, T, Y, U, I, O keys for 8 splits
+        split_keys = ['W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O']
+        self.split_shortcuts = []
+        for i, key in enumerate(split_keys):
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.activated.connect(lambda idx=i: self.save_split_timestamp(idx))
+            self.split_shortcuts.append(shortcut)
         
         # Space for play/pause
         self.play_shortcut = QShortcut(QKeySequence("Space"), self)
@@ -276,12 +357,12 @@ class VideoPlayer(QMainWindow):
         self.frame_forward_shortcut = QShortcut(QKeySequence("."), self)
         self.frame_forward_shortcut.activated.connect(self.frame_forward)
         
-        # Arrow keys for frame navigation (alternative)
+        # Arrow keys for 5-second seek
         self.left_arrow_shortcut = QShortcut(QKeySequence("Left"), self)
-        self.left_arrow_shortcut.activated.connect(self.frame_backward)
+        self.left_arrow_shortcut.activated.connect(self.seek_backward_5s)
         
         self.right_arrow_shortcut = QShortcut(QKeySequence("Right"), self)
-        self.right_arrow_shortcut.activated.connect(self.frame_forward)
+        self.right_arrow_shortcut.activated.connect(self.seek_forward_5s)
         
         # Shift + Arrow keys for 10-frame jumps
         self.shift_left_shortcut = QShortcut(QKeySequence("Shift+Left"), self)
@@ -290,14 +371,31 @@ class VideoPlayer(QMainWindow):
         self.shift_right_shortcut = QShortcut(QKeySequence("Shift+Right"), self)
         self.shift_right_shortcut.activated.connect(self.frame_forward_10)
         
-        # N key for focusing name input (helpful for quick naming)
+        # N key for focusing name input
         self.name_shortcut = QShortcut(QKeySequence("N"), self)
         self.name_shortcut.activated.connect(self.focus_name_input)
+        
+        # Escape to unfocus text fields
+        self.escape_shortcut = QShortcut(QKeySequence("Escape"), self)
+        self.escape_shortcut.activated.connect(self.unfocus_text_fields)
     
     def focus_name_input(self):
         """Focus the segment name input field"""
         self.segment_name_input.setFocus()
-        self.segment_name_input.selectAll()  # Select any existing text for easy replacement
+        self.segment_name_input.selectAll()
+    
+    def unfocus_text_fields(self):
+        """Unfocus all text fields"""
+        self.setFocus()
+    
+    def mousePressEvent(self, event):
+        """Handle mouse clicks to unfocus text fields"""
+        focused_widget = self.focusWidget()
+        if focused_widget == self.segment_name_input or focused_widget == self.segments_display or \
+           focused_widget in self.split_time_inputs or focused_widget == self.start_time_input or \
+           focused_widget == self.end_time_input:
+            self.setFocus()
+        super().mousePressEvent(event)
         
     def load_video(self):
         """Load an MP4 video file"""
@@ -323,6 +421,8 @@ class VideoPlayer(QMainWindow):
             self.start_button.setEnabled(True)
             self.frame_back_button.setEnabled(True)
             self.frame_forward_button.setEnabled(True)
+            self.seek_back_button.setEnabled(True)
+            self.seek_forward_button.setEnabled(True)
             
             # Update window title
             self.setWindowTitle(f"Video Timestamp Recorder (Video Only) - {os.path.basename(file_path)}")
@@ -346,19 +446,15 @@ class VideoPlayer(QMainWindow):
         
     def get_frame_duration_ms(self):
         """Get the duration of one frame in milliseconds"""
-        # Default to 30 fps (33.33ms per frame) if we can't determine the actual frame rate
         default_frame_duration = 1000 / 30  # ~33.33ms
         
         try:
-            # Try to get video track information
             media = self.media_player.get_media()
             if media:
-                # Parse media to get track info
                 media.parse()
                 tracks = media.tracks_get()
                 for track in tracks:
                     if track.type == vlc.TrackType.video:
-                        # Get frame rate from video track
                         fps = track.video.frame_rate_num / track.video.frame_rate_den if track.video.frame_rate_den > 0 else 30
                         return 1000 / fps
         except:
@@ -366,16 +462,34 @@ class VideoPlayer(QMainWindow):
             
         return default_frame_duration
     
+    def seek_forward_5s(self):
+        """Seek forward 5 seconds"""
+        if self.media_player and self.current_video_path:
+            current_time = self.media_player.get_time()
+            if current_time >= 0:
+                new_time = current_time + 5000
+                duration = self.media_player.get_length()
+                if duration > 0 and new_time < duration:
+                    self.media_player.set_time(new_time)
+                elif duration > 0:
+                    self.media_player.set_time(duration)
+    
+    def seek_backward_5s(self):
+        """Seek backward 5 seconds"""
+        if self.media_player and self.current_video_path:
+            current_time = self.media_player.get_time()
+            if current_time >= 0:
+                new_time = max(0, current_time - 5000)
+                self.media_player.set_time(new_time)
+    
     def frame_forward(self):
         """Move one frame forward"""
         if self.media_player and self.current_video_path:
-            # Pause the video first to ensure precise frame stepping
             was_playing = self.media_player.is_playing()
             if was_playing:
                 self.media_player.pause()
                 self.play_pause_button.setText("▶️ Play")
             
-            # Get current time and move forward to the next keyframe
             current_time = self.media_player.get_time()
             if current_time >= 0:
                 frame_duration = self.get_frame_duration_ms()
@@ -387,13 +501,11 @@ class VideoPlayer(QMainWindow):
     def frame_backward(self):
         """Move one frame backward"""
         if self.media_player and self.current_video_path:
-            # Pause the video first to ensure precise frame stepping
             was_playing = self.media_player.is_playing()
             if was_playing:
                 self.media_player.pause()
                 self.play_pause_button.setText("▶️ Play")
             
-            # Get current time and move backward to the previous keyframe
             current_time = self.media_player.get_time()
             if current_time >= 0:
                 frame_duration = self.get_frame_duration_ms()
@@ -403,13 +515,11 @@ class VideoPlayer(QMainWindow):
     def frame_forward_10(self):
         """Move 10 frames forward"""
         if self.media_player and self.current_video_path:
-            # Pause the video first to ensure precise frame stepping
             was_playing = self.media_player.is_playing()
             if was_playing:
                 self.media_player.pause()
                 self.play_pause_button.setText("▶️ Play")
             
-            # Get current time and move forward by 10 frame durations
             current_time = self.media_player.get_time()
             if current_time >= 0:
                 frame_duration = self.get_frame_duration_ms()
@@ -421,13 +531,11 @@ class VideoPlayer(QMainWindow):
     def frame_backward_10(self):
         """Move 10 frames backward"""
         if self.media_player and self.current_video_path:
-            # Pause the video first to ensure precise frame stepping
             was_playing = self.media_player.is_playing()
             if was_playing:
                 self.media_player.pause()
                 self.play_pause_button.setText("▶️ Play")
             
-            # Get current time and move backward by 10 frame durations
             current_time = self.media_player.get_time()
             if current_time >= 0:
                 frame_duration = self.get_frame_duration_ms()
@@ -459,7 +567,6 @@ class VideoPlayer(QMainWindow):
             if current_time >= 0:
                 self.current_time_label.setText(self.format_timestamp(current_time))
                 
-                # Update progress slider
                 duration = self.media_player.get_length()
                 if duration > 0:
                     position = int((current_time / duration) * 1000)
@@ -476,6 +583,98 @@ class VideoPlayer(QMainWindow):
             position = self.progress_slider.value() / 1000.0
             self.media_player.set_position(position)
         self.timer.start()
+    
+    def on_start_time_edited(self, text):
+        """Handle manual edit of start time"""
+        try:
+            ms = self.timestamp_to_ms(text)
+            if ms >= 0:
+                self.start_timestamp = ms
+                # Update relative times for all splits (relative to split 1)
+                self.update_all_relative_times()
+        except:
+            pass
+    
+    def on_split_absolute_time_edited(self, idx, text):
+        """Handle manual edit of split absolute time"""
+        try:
+            ms = self.timestamp_to_ms(text)
+            if ms == 0:
+                self.split_timestamps[idx] = None
+                self.split_relative_inputs[idx].blockSignals(True)
+                self.split_relative_inputs[idx].setText("0.000")
+                self.split_relative_inputs[idx].blockSignals(False)
+            elif ms > 0:
+                self.split_timestamps[idx] = ms
+                # Update relative time (relative to split 1 "start")
+                if idx == 0:
+                    # Split 1 is always 0.000 relative to itself
+                    self.split_relative_inputs[idx].blockSignals(True)
+                    self.split_relative_inputs[idx].setText("0.000")
+                    self.split_relative_inputs[idx].blockSignals(False)
+                    # Update all other splits
+                    self.update_all_relative_times()
+                else:
+                    # Calculate relative to split 1 (index 0)
+                    if self.split_timestamps[0] is not None:
+                        relative_ms = ms - self.split_timestamps[0]
+                        relative_sec = relative_ms / 1000.0
+                        self.split_relative_inputs[idx].blockSignals(True)
+                        self.split_relative_inputs[idx].setText(f"{relative_sec:.3f}")
+                        self.split_relative_inputs[idx].blockSignals(False)
+        except:
+            pass
+    
+    def on_split_relative_time_edited(self, idx, text):
+        """Handle manual edit of split relative time (relative to split 1)"""
+        try:
+            if idx == 0:
+                # Split 1 relative is always 0.000, editing it would change absolute time
+                # For now, we'll just ignore edits to split 1's relative field
+                return
+            
+            # Parse the seconds value (format: "00.000")
+            relative_sec = float(text.strip())
+            
+            # Calculate absolute time based on split 1
+            if self.split_timestamps[0] is not None:
+                absolute_ms = self.split_timestamps[0] + int(relative_sec * 1000)
+                self.split_timestamps[idx] = absolute_ms
+                # Update absolute time display
+                self.split_time_inputs[idx].blockSignals(True)
+                self.split_time_inputs[idx].setText(self.format_timestamp(absolute_ms))
+                self.split_time_inputs[idx].blockSignals(False)
+        except:
+            pass
+    
+    def update_all_relative_times(self):
+        """Update relative time displays for all splits (relative to split 1)"""
+        # Split 1 (index 0) is the reference point
+        if self.split_timestamps[0] is None:
+            # No reference point, reset all relatives
+            for idx in range(8):
+                self.split_relative_inputs[idx].blockSignals(True)
+                self.split_relative_inputs[idx].setText("0.000")
+                self.split_relative_inputs[idx].blockSignals(False)
+            return
+        
+        # Split 1 is always 0.000 relative to itself
+        self.split_relative_inputs[0].blockSignals(True)
+        self.split_relative_inputs[0].setText("0.000")
+        self.split_relative_inputs[0].blockSignals(False)
+        
+        # Calculate others relative to split 1
+        for idx in range(1, 8):
+            if self.split_timestamps[idx] is not None:
+                relative_ms = self.split_timestamps[idx] - self.split_timestamps[0]
+                relative_sec = relative_ms / 1000.0
+                self.split_relative_inputs[idx].blockSignals(True)
+                self.split_relative_inputs[idx].setText(f"{relative_sec:.3f}")
+                self.split_relative_inputs[idx].blockSignals(False)
+    
+    def on_end_time_edited(self):
+        """Handle manual edit of end time - not used for timestamp, just display"""
+        pass
         
     def save_start_timestamp(self):
         """Save the current timestamp as start time"""
@@ -485,18 +684,59 @@ class VideoPlayer(QMainWindow):
         self.start_timestamp = self.get_current_timestamp_ms()
         if self.start_timestamp >= 0:
             formatted_time = self.format_timestamp(self.start_timestamp)
-            self.start_time_label.setText(f"Start: {formatted_time}")
+            self.start_time_input.setText(formatted_time)
             self.end_button.setEnabled(True)
             
-            # Update placeholder to suggest next segment name
+            # Enable split buttons
+            for btn in self.split_buttons:
+                btn.setEnabled(True)
+            
+            # Reset splits
+            self.split_timestamps = [None] * 8
+            for time_input in self.split_time_inputs:
+                time_input.setText("00:00:00.000")
+            
+            # Reset relative time inputs
+            for relative_input in self.split_relative_inputs:
+                relative_input.setText("0.000")
+            
+            # Update placeholder
             next_num = len(self.segments) + 1
             self.segment_name_input.setPlaceholderText(f"Segment {next_num} (or custom name)")
             
-            # Update end button text to remind about naming
-            self.end_button.setText("🔴 Save End & Name (E)")
-            
-            # Focus the input field for easy naming
+            # Focus the input field
             self.segment_name_input.setFocus()
+    
+    def save_split_timestamp(self, split_index):
+        """Save the current timestamp as a split point"""
+        if not self.current_video_path or self.start_timestamp is None:
+            return
+        
+        split_timestamp = self.get_current_timestamp_ms()
+        if split_timestamp >= 0 and split_timestamp > self.start_timestamp:
+            self.split_timestamps[split_index] = split_timestamp
+            formatted_time = self.format_timestamp(split_timestamp)
+            self.split_time_inputs[split_index].setText(formatted_time)
+            self.split_time_inputs[split_index].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
+            
+            # Update relative time display (relative to split 1 "start")
+            if split_index == 0:
+                # Split 1 is always 0.000 relative to itself
+                self.split_relative_inputs[split_index].setText("0.000")
+                self.split_relative_inputs[split_index].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
+                # Update all other splits since the reference changed
+                self.update_all_relative_times()
+            else:
+                # Calculate relative to split 1
+                if self.split_timestamps[0] is not None:
+                    relative_ms = split_timestamp - self.split_timestamps[0]
+                    relative_sec = relative_ms / 1000.0
+                    self.split_relative_inputs[split_index].setText(f"{relative_sec:.3f}")
+                    self.split_relative_inputs[split_index].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
+                else:
+                    # No reference point yet
+                    self.split_relative_inputs[split_index].setText("0.000")
+                    self.split_relative_inputs[split_index].setStyleSheet("color: gray; font-size: 9pt;")
         
     def save_end_timestamp(self):
         """Save the current timestamp as end time and create segment"""
@@ -520,6 +760,7 @@ class VideoPlayer(QMainWindow):
             segment = {
                 'title': title,
                 'start': self.start_timestamp,
+                'splits': self.split_timestamps.copy(),
                 'end': end_timestamp
             }
             self.segments.append(segment)
@@ -529,11 +770,26 @@ class VideoPlayer(QMainWindow):
             
             # Reset for next segment
             self.start_timestamp = None
-            self.start_time_label.setText("Start: Not set")
+            self.split_timestamps = [None] * 8
+            self.start_time_input.setText("00:00:00.000")
+            self.end_time_input.setText("00:00:00.000")
             self.end_button.setEnabled(False)
-            self.end_button.setText("🔴 Save End (E)")  # Reset button text
             
-            # Clear the input field for next segment
+            # Disable split buttons
+            for btn in self.split_buttons:
+                btn.setEnabled(False)
+            
+            # Reset split inputs
+            for time_input in self.split_time_inputs:
+                time_input.setText("00:00:00.000")
+                time_input.setStyleSheet("color: orange; font-size: 9pt;")
+            
+            # Reset relative time inputs
+            for relative_input in self.split_relative_inputs:
+                relative_input.setText("0.000")
+                relative_input.setStyleSheet("color: gray; font-size: 9pt;")
+            
+            # Clear the input field
             self.segment_name_input.clear()
             
             # Auto-increment if using default naming
@@ -549,8 +805,17 @@ class VideoPlayer(QMainWindow):
         for i, segment in enumerate(self.segments, 1):
             start_str = self.format_timestamp(segment['start'])
             end_str = self.format_timestamp(segment['end'])
+            
+            # Build split string
+            splits_str = ""
+            for split in segment.get('splits', [None] * 8):
+                if split is not None:
+                    splits_str += ";" + self.format_timestamp(split)
+                else:
+                    splits_str += ";00:00:00.000"
+            
             display_text += f"{i:2d}. {segment['title']}\n"
-            display_text += f"    {start_str} - {end_str}\n\n"
+            display_text += f"    {start_str}{splits_str};{end_str}\n\n"
             
         # Temporarily disconnect signal to prevent infinite loop
         self.segments_display.textChanged.disconnect()
@@ -562,39 +827,42 @@ class VideoPlayer(QMainWindow):
         text = self.segments_display.toPlainText()
         new_segments = []
         
-        # Pattern to match lines like: "1. Title" followed by "    HH:MM:SS.mmm - HH:MM:SS.mmm"
         lines = text.split('\n')
         i = 0
         while i < len(lines):
             line = lines[i].strip()
-            if re.match(r'^\s*\d+\.\s*', line):  # Line starts with number and dot
-                # Extract title (everything after the number and dot)
+            if re.match(r'^\s*\d+\.\s*', line):
                 title_match = re.match(r'^\s*\d+\.\s*(.*)', line)
                 if title_match:
                     title = title_match.group(1).strip()
                     
-                    # Look for timestamp line
                     if i + 1 < len(lines):
                         timestamp_line = lines[i + 1].strip()
-                        timestamp_match = re.match(r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-\s*(\d{2}:\d{2}:\d{2}\.\d{3})', timestamp_line)
-                        if timestamp_match:
-                            start_str = timestamp_match.group(1)
-                            end_str = timestamp_match.group(2)
-                            
-                            # Convert timestamps to milliseconds
+                        parts = timestamp_line.split(';')
+                        
+                        if len(parts) >= 10:
                             try:
-                                start_ms = self.timestamp_to_ms(start_str)
-                                end_ms = self.timestamp_to_ms(end_str)
+                                start_ms = self.timestamp_to_ms(parts[0])
+                                end_ms = self.timestamp_to_ms(parts[9])
+                                
+                                splits = []
+                                for j in range(1, 9):
+                                    split_ms = self.timestamp_to_ms(parts[j])
+                                    if split_ms == 0:
+                                        splits.append(None)
+                                    else:
+                                        splits.append(split_ms)
                                 
                                 if title and start_ms >= 0 and end_ms > start_ms:
                                     new_segments.append({
                                         'title': title,
                                         'start': start_ms,
+                                        'splits': splits,
                                         'end': end_ms
                                     })
                             except:
-                                pass  # Skip invalid timestamps
-                        i += 2  # Skip both title and timestamp line
+                                pass
+                        i += 2
                     else:
                         i += 1
                 else:
@@ -602,7 +870,6 @@ class VideoPlayer(QMainWindow):
             else:
                 i += 1
         
-        # Update segments only if they changed
         if new_segments != self.segments:
             self.segments = new_segments
             self.segments_count_label.setText(f"Segments: {len(self.segments)}")
@@ -634,8 +901,25 @@ class VideoPlayer(QMainWindow):
             if reply == QMessageBox.Yes:
                 self.segments.clear()
                 self.start_timestamp = None
-                self.start_time_label.setText("Start: Not set")
+                self.split_timestamps = [None] * 8
+                self.start_time_input.setText("00:00:00.000")
+                self.end_time_input.setText("00:00:00.000")
                 self.end_button.setEnabled(False)
+                
+                # Disable split buttons
+                for btn in self.split_buttons:
+                    btn.setEnabled(False)
+                
+                # Reset split inputs
+                for time_input in self.split_time_inputs:
+                    time_input.setText("00:00:00.000")
+                    time_input.setStyleSheet("color: orange; font-size: 9pt;")
+                
+                # Reset relative time inputs
+                for relative_input in self.split_relative_inputs:
+                    relative_input.setText("0.000")
+                    relative_input.setStyleSheet("color: gray; font-size: 9pt;")
+                
                 self.update_segments_display()
                 
     def export_timestamps(self):
@@ -644,7 +928,6 @@ class VideoPlayer(QMainWindow):
             QMessageBox.warning(self, "Warning", "No segments to export!")
             return
         
-        # Use simple "timestamps.txt" filename
         default_filename = "timestamps.txt"
             
         file_path, _ = QFileDialog.getSaveFileName(
@@ -657,7 +940,16 @@ class VideoPlayer(QMainWindow):
                     for segment in self.segments:
                         start_str = self.format_timestamp(segment['start'])
                         end_str = self.format_timestamp(segment['end'])
-                        f.write(f"{segment['title']};{start_str};{end_str}\n")
+                        
+                        # Build split string
+                        splits_str = ""
+                        for split in segment.get('splits', [None] * 8):
+                            if split is not None:
+                                splits_str += ";" + self.format_timestamp(split)
+                            else:
+                                splits_str += ";00:00:00.000"
+                        
+                        f.write(f"{segment['title']};{start_str}{splits_str};{end_str}\n")
                         
                 QMessageBox.information(
                     self, "Export Successful", 
@@ -696,7 +988,7 @@ def main():
 
     # Ensure proper cleanup on exit
     exit_code = app.exec_()
-    del player  # Explicitly delete player to ensure cleanup
+    del player
     sys.exit(exit_code)
 
 if __name__ == "__main__":
