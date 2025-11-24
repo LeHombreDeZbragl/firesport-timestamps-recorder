@@ -11,7 +11,7 @@ Required Arguments:
 
 Optional Arguments:
   --folder, -f           Output folder (default: uses --name as folder name)
-  --chunk-minutes, -c    Chunk duration in minutes (default: 10)
+  --chunk-minutes, -c    Chunk duration in minutes (default: 120)
   --start, --from, -s    Start time in HH:MM:SS, MM:SS, or seconds (default: 0)
   --end, --to, -e        End time in HH:MM:SS, MM:SS, or seconds (default: end of video)
 
@@ -42,7 +42,7 @@ Features:
   - No audio quality limit (best available)
   - Downloads YouTube videos in time-based chunks directly
   - Uses FFmpeg to stream only specific time segments
-  - Each chunk downloads only its time range (10 minutes default)
+  - Each chunk downloads only its time range (120 minutes default)
   - Supports downloading specific time ranges from videos
 """
 import argparse
@@ -89,7 +89,7 @@ def parse_time_to_seconds(time_str):
         print("   Supported formats: minutes (10), MM:SS (2:30), HH:MM:SS (1:30:45)")
         sys.exit(1)
 
-def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=10, start_time="0", end_time=None):
+def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=120, start_time="0", end_time=None):
     """Download video in chunks directly from YouTube to save disk space"""
     start_time_real = datetime.now()
     print(f"🕒 Recording started at: {start_time_real.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -343,7 +343,7 @@ Output: Downloads to <folder>/parts/ directory, joins into final video in <folde
     parser.add_argument("--url", "-u", required=True, help="YouTube URL to download")
     parser.add_argument("--name", "-n", required=True, help="Video filename (without .mp4 extension)")
     parser.add_argument("--folder", "-f", help="Output folder (default: uses --name as folder name)")
-    parser.add_argument("--chunk-minutes", "-c", type=int, default=10, help="Chunk duration in minutes (default: 10)")
+    parser.add_argument("--chunk-minutes", "-c", type=int, default=120, help="Chunk duration in minutes (default: 120)")
     parser.add_argument("--start", "--from", "-s", type=str, default="0", help="Start time in HH:MM:SS, MM:SS, or seconds (default: 0)")
     parser.add_argument("--end", "--to", "-e", type=str, help="End time in HH:MM:SS, MM:SS, or seconds (default: end of video)")
     args = parser.parse_args()
