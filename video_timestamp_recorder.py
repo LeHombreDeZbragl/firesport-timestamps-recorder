@@ -21,18 +21,18 @@ Interface:
   
 Marking Segments:
   1. Position video at start point → Press Q or click "Začátek"
-  2. (Optional) Mark up to 8 split points → Press W/E/R/T/Y/U/I/O
+  2. (Optional) Mark up to 9 split points → Press W/E/R/T/Y/U/I/O/P
   3. (Optional) Type segment name in the text field → Press N to focus
-  4. Position video at end point → Press P or click "Konec"
+  4. Position video at end point → Press [ or click "Konec"
   5. Segment is automatically saved with name (or auto-generated number)
   6. All segments exported to 'timestamps.txt' in format:
-     title;start_time;split1;split2;...;split8;end_time
+     title;start_time;split1;split2;...;split9;end_time
 
 Keyboard Shortcuts:
   Q              - Mark začátek (start)
-  W, E, R, T,    - Mark splits 1-8
-  Y, U, I, O
-  P              - Mark konec (end)
+  W, E, R, T,    - Mark splits 1-9
+  Y, U, I, P
+  [              - Mark konec (end)
   N              - Focus segment name field
   Space          - Play/Pause
   , (comma)      - Back 1 frame
@@ -44,7 +44,7 @@ Keyboard Shortcuts:
 
 Output:
   - timestamps.txt: Segment data for use with firetimer-cutvid.py
-  - Format: title;HH:MM:SS.mmm;split1;split2;...;split8;HH:MM:SS.mmm
+  - Format: title;HH:MM:SS.mmm;split1;split2;...;split9;HH:MM:SS.mmm
 
 Requirements:
   - PyQt5: pip install PyQt5
@@ -54,7 +54,7 @@ Requirements:
 Features:
   - Video-only playback (audio disabled for stability)
   - Frame-by-frame precision navigation
-  - 8 split points per segment (Czech labels)
+  - 9 split points per segment (Czech labels)
   - Live segment editing with editable timestamps
   - Auto-generated segment names (Segment 1, Segment 2, etc.)
   - Inline segment naming without modal dialogs
@@ -107,12 +107,12 @@ class VideoPlayer(QMainWindow):
         
         # Timestamp recording variables
         self.start_timestamp = None
-        self.split_timestamps = [None] * 8  # 8 split points
+        self.split_timestamps = [None] * 9  # 9 split points
         self.segments = []
         self.output_file = "timestamps.txt"
         
         # Split names in Czech
-        self.split_names = ['start', 'koš', 'voda', 'kohout', 'rozdělovač', 'výstřik', 'LP', 'PP']
+        self.split_names = ['start', 'koš', 'voda', 'kohout', 'rozdělovač', 'výstřik LP', 'výstřik PP', 'LP', 'PP']
         
         # Timer for updating current time display
         self.timer = QTimer()
@@ -249,9 +249,9 @@ class VideoPlayer(QMainWindow):
         self.split_buttons = []
         self.split_time_inputs = []
         self.split_relative_inputs = []
-        split_keys = ['W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O']
+        split_keys = ['W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P']
         
-        for i in range(8):
+        for i in range(9):
             split_layout = QHBoxLayout()
             btn = QPushButton(f"{self.split_names[i]} ({split_keys[i]})")
             btn.clicked.connect(lambda checked, idx=i: self.save_split_timestamp(idx))
@@ -280,7 +280,7 @@ class VideoPlayer(QMainWindow):
         
         # End button with editable time
         end_layout = QHBoxLayout()
-        self.end_button = QPushButton("🔴 Konec (P)")
+        self.end_button = QPushButton("🔴 Konec ([)")
         self.end_button.clicked.connect(self.save_end_timestamp)
         self.end_button.setEnabled(False)
         self.end_button.setMinimumWidth(150)
@@ -332,12 +332,12 @@ class VideoPlayer(QMainWindow):
         self.start_shortcut = QShortcut(QKeySequence("Q"), self)
         self.start_shortcut.activated.connect(self.save_start_timestamp)
         
-        # P key for end timestamp
-        self.end_shortcut = QShortcut(QKeySequence("P"), self)
+        # [ key for end timestamp
+        self.end_shortcut = QShortcut(QKeySequence("["), self)
         self.end_shortcut.activated.connect(self.save_end_timestamp)
         
-        # W, E, R, T, Y, U, I, O keys for 8 splits
-        split_keys = ['W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O']
+        # W, E, R, T, Y, U, I, P keys for 8 splits
+        split_keys = ['W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P']
         self.split_shortcuts = []
         for i, key in enumerate(split_keys):
             shortcut = QShortcut(QKeySequence(key), self)
@@ -652,7 +652,7 @@ class VideoPlayer(QMainWindow):
         # Split 1 (index 0) is the reference point
         if self.split_timestamps[0] is None:
             # No reference point, reset all relatives
-            for idx in range(8):
+            for idx in range(9):
                 self.split_relative_inputs[idx].blockSignals(True)
                 self.split_relative_inputs[idx].setText("0.000")
                 self.split_relative_inputs[idx].blockSignals(False)
@@ -692,7 +692,7 @@ class VideoPlayer(QMainWindow):
                 btn.setEnabled(True)
             
             # Reset splits
-            self.split_timestamps = [None] * 8
+            self.split_timestamps = [None] * 9
             for time_input in self.split_time_inputs:
                 time_input.setText("00:00:00.000")
             
@@ -770,7 +770,7 @@ class VideoPlayer(QMainWindow):
             
             # Reset for next segment
             self.start_timestamp = None
-            self.split_timestamps = [None] * 8
+            self.split_timestamps = [None] * 9
             self.start_time_input.setText("00:00:00.000")
             self.end_time_input.setText("00:00:00.000")
             self.end_button.setEnabled(False)
@@ -840,13 +840,13 @@ class VideoPlayer(QMainWindow):
                         timestamp_line = lines[i + 1].strip()
                         parts = timestamp_line.split(';')
                         
-                        if len(parts) >= 10:
+                        if len(parts) >= 11:
                             try:
                                 start_ms = self.timestamp_to_ms(parts[0])
-                                end_ms = self.timestamp_to_ms(parts[9])
+                                end_ms = self.timestamp_to_ms(parts[10])
                                 
                                 splits = []
-                                for j in range(1, 9):
+                                for j in range(1, 10):
                                     split_ms = self.timestamp_to_ms(parts[j])
                                     if split_ms == 0:
                                         splits.append(None)

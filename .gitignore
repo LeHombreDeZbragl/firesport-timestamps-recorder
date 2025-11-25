@@ -84,13 +84,14 @@ Desktop.ini
 *.temp
 *.log
 
-# Test output
-test_*/
-test_fixed/
-
 # Keep these important files (negation patterns)
 !requirements.txt
 !requirements_gui.txt
 !README.md
 !setup.sh
 !activate_env.sh
+
+# Remove these unnecessary files
+test_*/
+test_fixed/
+TODO

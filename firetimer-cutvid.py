@@ -11,12 +11,10 @@ Required Arguments:
 
 Timestamps File Format:
   Each non-empty, non-comment line should contain:
-  title;start_time;end_time
+  title;začátek;start;koš;voda;kohout;rozdělovač;výstřik_LP;výstřik_PP;LP;PP;konec
   
   Example:
-    Introduction;00:00:10;00:02:30
-    Main Content;00:02:30;00:15:45
-    Conclusion;00:15:45;00:18:20
+    Zbraslav;00:00:11.900;00:00:16.901;00:00:17.400;00:00:18.151;00:00:18.402;00:00:19.151;00:00:19.651;00:00:19.901;00:00:20.400;00:00:20.901;00:00:21.901
 
 Output:
   - Creates 'out-parts/' folder in same directory as source video
@@ -83,9 +81,9 @@ def parse_timestamps_file(path):
             if not ln or ln.startswith("#"):
                 continue
             parts = ln.split(";")
-            # New format: title;začátek;start;koš;voda;kohout;rozdělovač;výstřik;LP;PP;konec
+            # New format: title;začátek;start;koš;voda;kohout;rozdělovač;výstřik_LP;výstřik_PP;LP;PP;konec
             # Old format: title;start;end
-            if len(parts) >= 11:
+            if len(parts) >= 12:
                 # New format with splits
                 title = parts[0].strip()
                 zacatek = parts[1].strip()  # začátek (not used for timer)
@@ -94,10 +92,11 @@ def parse_timestamps_file(path):
                 split_voda = parts[4].strip()
                 split_kohout = parts[5].strip()
                 split_rozdelovac = parts[6].strip()
-                split_vystrik = parts[7].strip()
-                split_lp = parts[8].strip()
-                split_pp = parts[9].strip()
-                konec = parts[10].strip()
+                split_vystrik_lp = parts[7].strip()
+                split_vystrik_pp = parts[8].strip()
+                split_lp = parts[9].strip()
+                split_pp = parts[10].strip()
+                konec = parts[11].strip()
                 
                 try:
                     start = fix_timestamp(zacatek)
@@ -111,7 +110,8 @@ def parse_timestamps_file(path):
                         'voda': split_voda,
                         'kohout': split_kohout,
                         'rozdělovač': split_rozdelovac,
-                        'výstřik': split_vystrik,
+                        'výstřik_LP': split_vystrik_lp,
+                        'výstřik_PP': split_vystrik_pp,
                         'LP': split_lp,
                         'PP': split_pp
                     }
@@ -237,7 +237,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     centiseconds_raw = f"mod({timer_value}*100\\,100)"
     tens_digit = f"eif\\:{centiseconds_raw}/10\\:d"
     ones_digit = f"eif\\:mod({centiseconds_raw}\\,10)\\:d"
-    timer_text = f"%{{{seconds_part}}}.%{{{tens_digit}}}%{{{ones_digit}}}"
+    timer_text = f"%{{{seconds_part}}}\\:%{{{tens_digit}}}%{{{ones_digit}}}"
     
     # Build drawtext filters
     filters = ["setpts=PTS-STARTPTS"]  # Reset timestamps to start from 0
@@ -264,7 +264,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     # Add split overlays (if splits are provided)
     if splits:
         # Right side splits (excluding kohout, LP, and PP)
-        right_split_names = ['koš', 'voda', 'rozdělovač', 'výstřik']
+        right_split_names = ['koš', 'voda', 'rozdělovač', 'výstřik_LP', 'výstřik_PP']
         y_offset = 200  # Start position above timer (moved higher to avoid overlap)
         
         # Get start split timestamp for calculating relative times
@@ -288,13 +288,15 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                                 # Calculate when this split should appear (relative to začátek)
                                 split_appears_at = split_seconds - start_seconds
                                 
-                                # Format with 2 decimal places
-                                split_formatted = f"{relative_seconds:.2f}"
+                                # Format with colon separator (XX:YY where YY is centiseconds)
+                                seconds_part = int(relative_seconds)
+                                centiseconds_part = int((relative_seconds - seconds_part) * 100)
+                                split_formatted = f"{seconds_part}\\:{centiseconds_part:02d}"
                                 
-                                # Escape the split name and value separately
+                                # Escape the split name
                                 split_name_safe = ff_escape_text(split_name)
                                 
-                                # Animation parameters for sliding from right
+                                # Animation parameters for sliding from top
                                 # Slide in over 0.3 seconds after the split appears
                                 slide_duration = 0.5
                                 slide_start = split_appears_at
@@ -342,8 +344,10 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                                 # Calculate when this split should appear (relative to začátek)
                                 split_appears_at = split_seconds - start_seconds
                                 
-                                # Format with 2 decimal places
-                                split_formatted = f"{relative_seconds:.2f}"
+                                # Format with colon separator (XX:YY where YY is centiseconds)
+                                seconds_part = int(relative_seconds)
+                                centiseconds_part = int((relative_seconds - seconds_part) * 100)
+                                split_formatted = f"{seconds_part}\\:{centiseconds_part:02d}"
                                 
                                 # Escape the split name
                                 split_name_safe = ff_escape_text(split_name)
