@@ -263,8 +263,8 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     
     # Add split overlays (if splits are provided)
     if splits:
-        # Right side splits (excluding kohout, LP, and PP)
-        right_split_names = ['koš', 'voda', 'rozdělovač', 'výstřik_LP', 'výstřik_PP']
+        # Right side splits (excluding kohout, LP, PP, výstřik_LP, and výstřik_PP)
+        right_split_names = ['koš', 'voda', 'rozdělovač']
         y_offset = 200  # Start position above timer (moved higher to avoid overlap)
         
         # Get start split timestamp for calculating relative times
@@ -321,7 +321,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                                 continue
                 
                 # Process LP and PP splits at the top with gap between them
-                # Center them with a gap of 200 pixels between them
+                # Center them with a gap of 700 pixels between them
                 # LP on the left of center, PP on the right of center
                 top_splits = ['LP', 'PP']
                 gap = 700
@@ -357,7 +357,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                                 slide_start = split_appears_at
                                 slide_end = split_appears_at + slide_duration
                                 
-                                # Y position: starts off-screen (-100), slides to final position (60 for name, 110 for timestamp)
+                                # Y position: starts off-screen (-100), slides to final position (20 for name, 70 for timestamp)
                                 final_y_name = 20
                                 final_y_timestamp = 70
                                 y_pos_name = f"if(lt(t\\,{slide_start})\\,-100\\,if(gte(t\\,{slide_end})\\,{final_y_name}\\,-100+((t-{slide_start})/{slide_duration})*({final_y_name}+100)))"
@@ -374,6 +374,127 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                                 # Split timestamp (larger, below name, centered)
                                 filters.append(
                                     f"drawtext=text='{split_formatted}':fontcolor=white:fontsize=70:x={x_pos_centered}:y={y_pos_timestamp}:enable='gte(t\\,{split_appears_at})'"
+                                )
+                            except:
+                                continue
+                
+                # Process výstřik_LP and výstřik_PP splits at the top, to the right of LP and PP respectively
+                # These should be smaller and positioned to the right of their corresponding main splits
+                vystrik_splits = {
+                    'výstřik_LP': 'LP',  # výstřik_LP goes to the right of LP
+                    'výstřik_PP': 'PP'   # výstřik_PP goes to the right of PP
+                }
+                
+                # Offset to the right of main split (in pixels)
+                vystrik_offset = 250
+                
+                for vystrik_name, main_split_name in vystrik_splits.items():
+                    if vystrik_name in splits:
+                        split_timestamp = splits[vystrik_name].strip()
+                        # Check if it's a valid non-zero timestamp
+                        if split_timestamp and split_timestamp != "00:00:00.000":
+                            try:
+                                # Convert absolute timestamp to seconds
+                                split_seconds = timestamp_to_seconds(split_timestamp)
+                                # Calculate relative to "start" split
+                                relative_seconds = split_seconds - start_split_seconds
+                                
+                                # Calculate when this split should appear (relative to začátek)
+                                split_appears_at = split_seconds - start_seconds
+                                
+                                # Format with colon separator (XX:YY where YY is centiseconds)
+                                seconds_part = int(relative_seconds)
+                                centiseconds_part = int((relative_seconds - seconds_part) * 100)
+                                split_formatted = f"{seconds_part}\\:{centiseconds_part:02d}"
+                                
+                                # Escape the split name
+                                split_name_safe = ff_escape_text(vystrik_name)
+                                
+                                # Animation parameters for sliding from top
+                                slide_duration = 0.5
+                                slide_start = split_appears_at
+                                slide_end = split_appears_at + slide_duration
+                                
+                                # Y position: starts off-screen (-100), slides to final position (20 for name, 70 for timestamp)
+                                final_y_name = 20
+                                final_y_timestamp = 70
+                                y_pos_name = f"if(lt(t\\,{slide_start})\\,-100\\,if(gte(t\\,{slide_end})\\,{final_y_name}\\,-100+((t-{slide_start})/{slide_duration})*({final_y_name}+100)))"
+                                y_pos_timestamp = f"if(lt(t\\,{slide_start})\\,-100\\,if(gte(t\\,{slide_end})\\,{final_y_timestamp}\\,-100+((t-{slide_start})/{slide_duration})*({final_y_timestamp}+100)))"
+                                
+                                # X position: to the right of the main split (LP or PP)
+                                # Base position of main split + offset
+                                x_pos_centered = f"{x_base_positions[main_split_name]}+{vystrik_offset}-tw/2"
+                                
+                                # Split name (smaller font, above timestamp, centered)
+                                filters.append(
+                                    f"drawtext=text='{split_name_safe}':fontcolor=white:fontsize=25:x={x_pos_centered}:y={y_pos_name}:enable='gte(t\\,{split_appears_at})'"
+                                )
+                                
+                                # Split timestamp (smaller font, below name, centered)
+                                filters.append(
+                                    f"drawtext=text='{split_formatted}':fontcolor=white:fontsize=45:x={x_pos_centered}:y={y_pos_timestamp}:enable='gte(t\\,{split_appears_at})'"
+                                )
+                            except:
+                                continue
+                
+                # Process sestřik_LP and sestřik_PP splits (calculated as LP - výstřik_LP and PP - výstřik_PP)
+                # These appear below their corresponding výstřik splits
+                sestrik_splits = {
+                    'sestřik_LP': ('LP', 'výstřik_LP'),  # LP - výstřik_LP
+                    'sestřik_PP': ('PP', 'výstřik_PP')   # PP - výstřik_PP
+                }
+                
+                for sestrik_name, (main_split, vystrik_split) in sestrik_splits.items():
+                    # Check if both required splits exist
+                    if main_split in splits and vystrik_split in splits:
+                        main_timestamp = splits[main_split].strip()
+                        vystrik_timestamp = splits[vystrik_split].strip()
+                        
+                        # Check if both are valid non-zero timestamps
+                        if (main_timestamp and main_timestamp != "00:00:00.000" and
+                            vystrik_timestamp and vystrik_timestamp != "00:00:00.000"):
+                            try:
+                                # Convert both timestamps to seconds
+                                main_seconds = timestamp_to_seconds(main_timestamp)
+                                vystrik_seconds = timestamp_to_seconds(vystrik_timestamp)
+                                
+                                # Calculate sestřik value (difference between main and výstřik)
+                                sestrik_value = main_seconds - vystrik_seconds
+                                
+                                # Calculate when this split should appear (when the main split appears)
+                                split_appears_at = main_seconds - start_seconds
+                                
+                                # Format with colon separator (XX:YY where YY is centiseconds)
+                                seconds_part = int(sestrik_value)
+                                centiseconds_part = int((sestrik_value - seconds_part) * 100)
+                                split_formatted = f"{seconds_part}\\:{centiseconds_part:02d}"
+                                
+                                # Escape the split name
+                                split_name_safe = ff_escape_text(sestrik_name)
+                                
+                                # Animation parameters for sliding from top
+                                slide_duration = 0.5
+                                slide_start = split_appears_at
+                                slide_end = split_appears_at + slide_duration
+                                
+                                # Y position: below the výstřik split (120 for name, 170 for timestamp)
+                                final_y_name = 120
+                                final_y_timestamp = 170
+                                y_pos_name = f"if(lt(t\\,{slide_start})\\,-100\\,if(gte(t\\,{slide_end})\\,{final_y_name}\\,-100+((t-{slide_start})/{slide_duration})*({final_y_name}+100)))"
+                                y_pos_timestamp = f"if(lt(t\\,{slide_start})\\,-100\\,if(gte(t\\,{slide_end})\\,{final_y_timestamp}\\,-100+((t-{slide_start})/{slide_duration})*({final_y_timestamp}+100)))"
+                                
+                                # X position: same as výstřik split (to the right of the main split)
+                                main_split_name = main_split  # 'LP' or 'PP'
+                                x_pos_centered = f"{x_base_positions[main_split_name]}+{vystrik_offset}-tw/2"
+                                
+                                # Split name (smaller font, above timestamp, centered)
+                                filters.append(
+                                    f"drawtext=text='{split_name_safe}':fontcolor=white:fontsize=25:x={x_pos_centered}:y={y_pos_name}:enable='gte(t\\,{split_appears_at})'"
+                                )
+                                
+                                # Split timestamp (smaller font, below name, centered)
+                                filters.append(
+                                    f"drawtext=text='{split_formatted}':fontcolor=white:fontsize=45:x={x_pos_centered}:y={y_pos_timestamp}:enable='gte(t\\,{split_appears_at})'"
                                 )
                             except:
                                 continue
