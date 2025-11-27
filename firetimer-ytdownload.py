@@ -21,7 +21,7 @@ Time Format:
   - HH:MM:SS: 1:30:45
 
 Output:
-  - Downloads to <folder>/parts/ directory
+  - Downloads to <folder>/in-parts/ directory
   - Automatically joins parts into final video in <folder>/
 
 Examples:
@@ -98,7 +98,7 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=120, 
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     
-    parts_folder = os.path.join(output_folder, "parts")
+    parts_folder = os.path.join(output_folder, "in-parts")
     if not os.path.exists(parts_folder):
         os.makedirs(parts_folder)
     
@@ -337,7 +337,7 @@ Examples:
   python3 firetimer-ytdownload.py -u https://youtube.com/watch?v=xyz -n clip -s 300 -e 900
 
 Time Format: seconds (120), MM:SS (2:30), or HH:MM:SS (1:30:45)
-Output: Downloads to <folder>/parts/ directory, joins into final video in <folder>/
+Output: Downloads to <folder>/in-parts/ directory, joins into final video in <folder>/
         """
     )
     parser.add_argument("--url", "-u", required=True, help="YouTube URL to download")
@@ -373,7 +373,7 @@ Output: Downloads to <folder>/parts/ directory, joins into final video in <folde
             join_videos(parts, final_path)
             final_size = os.path.getsize(final_path) / (1024 * 1024)
             print(f"🎬 Final video: {final_name} ({final_size:.1f}MB)")
-            print(f"📁 Parts saved in: {os.path.join(args.folder, 'parts')}")
+            print(f"📁 Parts saved in: {os.path.join(args.folder, 'in-parts')}")
         except Exception as e:
             print(f"❌ Failed to join videos: {e}")
     else:
