@@ -253,10 +253,21 @@ class VideoPlayer(QMainWindow):
         
         for i in range(9):
             split_layout = QHBoxLayout()
+            
+            # Add -150ms button for first split (start) at the beginning
+            if i == 0:
+                minus_150_btn = QPushButton("-150ms")
+                minus_150_btn.setMaximumWidth(60)
+                minus_150_btn.clicked.connect(self.subtract_150ms_from_start)
+                split_layout.addWidget(minus_150_btn)
+            
             btn = QPushButton(f"{self.split_names[i]} ({split_keys[i]})")
             btn.clicked.connect(lambda checked, idx=i: self.save_split_timestamp(idx))
             btn.setEnabled(False)
-            btn.setMinimumWidth(120)
+            if i == 0:
+                btn.setMinimumWidth(60)  # Smaller width for first split to share space with -150ms button
+            else:
+                btn.setMinimumWidth(120)
             self.split_buttons.append(btn)
             split_layout.addWidget(btn)
             
@@ -706,6 +717,20 @@ class VideoPlayer(QMainWindow):
             
             # Focus the input field
             self.segment_name_input.setFocus()
+    
+    def subtract_150ms_from_start(self):
+        """Subtract 150ms from the first split (start) timestamp"""
+        if self.split_timestamps[0] is not None and self.split_timestamps[0] > 0:
+            new_timestamp = max(0, self.split_timestamps[0] - 150)
+            self.split_timestamps[0] = new_timestamp
+            
+            # Update absolute time display
+            self.split_time_inputs[0].blockSignals(True)
+            self.split_time_inputs[0].setText(self.format_timestamp(new_timestamp))
+            self.split_time_inputs[0].blockSignals(False)
+            
+            # Update all relative times since the reference changed
+            self.update_all_relative_times()
     
     def save_split_timestamp(self, split_index):
         """Save the current timestamp as a split point"""
