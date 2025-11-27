@@ -595,8 +595,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Timestamps File Format:
-  Each line: title;start_time;end_time
-  Example: Introduction;00:00:10;00:02:30
+  Each line has 12 fields:
+  title;začátek;start;koš;voda;kohout;rozdělovač;výstřik_LP;výstřik_PP;LP;PP;konec
+  
+  Example:
+  Zbraslav;00:00:11.900;00:00:16.901;00:00:17.400;00:00:18.151;00:00:18.402;00:00:19.151;00:00:19.651;00:00:19.901;00:00:20.400;00:00:20.901;00:00:21.901
 
 Output:
   - Creates 'out-parts/' folder in same directory as source video
@@ -610,7 +613,7 @@ Examples:
     )
     parser.add_argument("--source", "-s", required=True, help="Video source: local MP4 file path")
     parser.add_argument("--times", "-t", required=True, help="Timestamps file")
-    parser.add_argument("-z", action="store_true", help="Add placement labels (1. místo, 2. místo, etc.)")
+    parser.add_argument("-z", action="store_true", help="Sort by final time (max of LP/PP) and add placement labels (1.místo, 2.místo, etc.)")
     args = parser.parse_args()
 
     check_deps()

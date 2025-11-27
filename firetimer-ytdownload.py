@@ -12,11 +12,11 @@ Required Arguments:
 Optional Arguments:
   --folder, -f           Output folder (default: uses --name as folder name)
   --chunk-minutes, -c    Chunk duration in minutes (default: 120)
-  --start, --from, -s    Start time in HH:MM:SS, MM:SS, or seconds (default: 0)
-  --end, --to, -e        End time in HH:MM:SS, MM:SS, or seconds (default: end of video)
+  --start, --from, -s    Start time in HH:MM:SS, MM:SS, or minutes (default: 0)
+  --end, --to, -e        End time in HH:MM:SS, MM:SS, or minutes (default: end of video)
 
 Time Format:
-  - Seconds: 120
+  - Minutes: 120 (converts to 120 minutes)
   - MM:SS: 2:30
   - HH:MM:SS: 1:30:45
 
@@ -65,7 +65,7 @@ def seconds_to_time_string(seconds):
         return f"{minutes}:{secs:02d}"
 
 def parse_time_to_seconds(time_str):
-    """Convert time string (minutes or HH:MM:SS) to seconds"""
+    """Convert time string to seconds. Accepts: plain minutes (120), MM:SS (2:30), or HH:MM:SS (1:30:45)"""
     if not time_str:
         return None
 
@@ -86,7 +86,7 @@ def parse_time_to_seconds(time_str):
             raise ValueError(f"Invalid time format: {time_str}")
     except ValueError as e:
         print(f"❌ Error parsing time '{time_str}': {e}")
-        print("   Supported formats: minutes (10), MM:SS (2:30), HH:MM:SS (1:30:45)")
+        print("   Supported formats: minutes (120), MM:SS (2:30), HH:MM:SS (1:30:45)")
         sys.exit(1)
 
 def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=120, start_time="0", end_time=None):
@@ -336,7 +336,7 @@ Examples:
   # Download time range in seconds
   python3 firetimer-ytdownload.py -u https://youtube.com/watch?v=xyz -n clip -s 300 -e 900
 
-Time Format: seconds (120), MM:SS (2:30), or HH:MM:SS (1:30:45)
+Time Format: minutes (120), MM:SS (2:30), or HH:MM:SS (1:30:45)
 Output: Downloads to <folder>/in-parts/ directory, joins into final video in <folder>/
         """
     )
@@ -344,8 +344,8 @@ Output: Downloads to <folder>/in-parts/ directory, joins into final video in <fo
     parser.add_argument("--name", "-n", required=True, help="Video filename (without .mp4 extension)")
     parser.add_argument("--folder", "-f", help="Output folder (default: uses --name as folder name)")
     parser.add_argument("--chunk-minutes", "-c", type=int, default=120, help="Chunk duration in minutes (default: 120)")
-    parser.add_argument("--start", "--from", "-s", type=str, default="0", help="Start time in HH:MM:SS, MM:SS, or seconds (default: 0)")
-    parser.add_argument("--end", "--to", "-e", type=str, help="End time in HH:MM:SS, MM:SS, or seconds (default: end of video)")
+    parser.add_argument("--start", "--from", "-s", type=str, default="0", help="Start time in HH:MM:SS, MM:SS, or minutes (default: 0)")
+    parser.add_argument("--end", "--to", "-e", type=str, help="End time in HH:MM:SS, MM:SS, or minutes (default: end of video)")
     args = parser.parse_args()
 
     # If folder not specified, use name as folder
