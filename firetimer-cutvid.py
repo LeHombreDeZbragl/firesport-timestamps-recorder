@@ -71,6 +71,66 @@ def fix_timestamp(ts):
         s = f"{int(s):02d}"
     return f"{int(h):02d}:{int(m):02d}:{s}"
 
+def validate_timestamps_file(path):
+    """Validate timestamps file and return list of warnings.
+    Returns (is_valid, warnings_list)
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    
+    warnings = []
+    line_number = 0
+    
+    with open(path, "r", encoding="utf-8") as f:
+        for ln in f:
+            line_number += 1
+            ln = ln.strip()
+            if not ln or ln.startswith("#"):
+                continue
+            
+            parts = ln.split(";")
+            
+            # Check if line has exactly 12 parts
+            if len(parts) != 12:
+                warnings.append(f"Line {line_number}: Expected exactly 12 parts, found {len(parts)}")
+                continue
+            
+            # Extract parts
+            title = parts[0].strip()
+            zacatek = parts[1].strip()
+            split_start = parts[2].strip()
+            split_kos = parts[3].strip()
+            split_voda = parts[4].strip()
+            split_kohout = parts[5].strip()
+            split_rozdelovac = parts[6].strip()
+            split_vystrik_lp = parts[7].strip()
+            split_vystrik_pp = parts[8].strip()
+            split_lp = parts[9].strip()
+            split_pp = parts[10].strip()
+            konec = parts[11].strip()
+            
+            # Check if title (parts[0]) is empty
+            if not title:
+                warnings.append(f"Line {line_number}: is missing a title")
+            
+            # Check if začátek (parts[1]) is empty
+            if not zacatek:
+                title_info = f" (title: {title})" if title else ""
+                warnings.append(f"Line {line_number}: is missing the timestamp začátek {title_info}")
+            
+            # Check if start (parts[2]) is empty
+            if not split_start:
+                title_info = f" (title: {title})" if title else ""
+                warnings.append(f"Line {line_number}: is missing the timestamp start {title_info}")
+            
+            # Check if konec (parts[11]) is empty
+            if not konec:
+                title_info = f" (title: {title})" if title else ""
+                warnings.append(f"Line {line_number}: is missing the timestamp konec {title_info}")
+    
+    is_valid = len(warnings) == 0
+    return is_valid, warnings
+
 def parse_timestamps_file(path):
     if not os.path.exists(path):
         raise FileNotFoundError(path)
@@ -81,9 +141,9 @@ def parse_timestamps_file(path):
             if not ln or ln.startswith("#"):
                 continue
             parts = ln.split(";")
+            
             # New format: title;začátek;start;koš;voda;kohout;rozdělovač;výstřik_LP;výstřik_PP;LP;PP;konec
-            # Old format: title;start;end
-            if len(parts) >= 12:
+            if len(parts) == 12:
                 # New format with splits
                 title = parts[0].strip()
                 zacatek = parts[1].strip()  # začátek (not used for timer)
@@ -120,19 +180,6 @@ def parse_timestamps_file(path):
                 except ValueError as e:
                     print("Skipping line due to timestamp error:", e)
                     continue
-            elif len(parts) >= 3:
-                # Old format without splits
-                title, start_raw, end_raw = parts[0].strip(), parts[1].strip(), parts[2].strip()
-                try:
-                    start = fix_timestamp(start_raw)
-                    end = fix_timestamp(end_raw)
-                    segments.append((title, start, end, {}))
-                except ValueError as e:
-                    print("Skipping line due to timestamp error:", e)
-                    continue
-            else:
-                print(f"Skipping invalid line: {ln}")
-                continue
     return segments
 
 def ff_escape_text(s):
@@ -209,6 +256,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                     pass
             
             # Timer stops at the maximum of LP and PP (relative to začátek)
+            # If both are missing, timer doesn't stop (runs until end)
             if lp_seconds > 0 or pp_seconds > 0:
                 max_split_seconds = max(lp_seconds, pp_seconds)
                 timer_stop_time = max_split_seconds - start_seconds
@@ -370,11 +418,14 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                 # First, find the maximum timestamp between LP and PP
                 lp_appears_at = None
                 pp_appears_at = None
+                lp_has_value = False
+                pp_has_value = False
                 
                 if 'LP' in splits and splits['LP'].strip() and splits['LP'].strip() != "00:00:00.000":
                     try:
                         lp_seconds = timestamp_to_seconds(splits['LP'].strip())
                         lp_appears_at = lp_seconds - start_seconds
+                        lp_has_value = True
                     except:
                         pass
                 
@@ -382,10 +433,12 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                     try:
                         pp_seconds = timestamp_to_seconds(splits['PP'].strip())
                         pp_appears_at = pp_seconds - start_seconds
+                        pp_has_value = True
                     except:
                         pass
                 
                 # Determine when all top splits should appear (max of LP and PP)
+                # If both are missing, show them at the start split time
                 top_splits_appear_at = None
                 if lp_appears_at is not None and pp_appears_at is not None:
                     top_splits_appear_at = max(lp_appears_at, pp_appears_at)
@@ -393,6 +446,12 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                     top_splits_appear_at = lp_appears_at
                 elif pp_appears_at is not None:
                     top_splits_appear_at = pp_appears_at
+                else:
+                    # Both are missing, show NP 4 seconds before the end (or at timer_offset if video is too short)
+                    if duration > 4:
+                        top_splits_appear_at = duration - 4
+                    else:
+                        top_splits_appear_at = timer_offset
                 
                 if top_splits_appear_at is not None:
                     # Animation parameters for sliding from top (same for all top splits)
@@ -409,40 +468,60 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                     # Process LP and PP splits
                     top_splits = ['LP', 'PP']
                     for split_name in top_splits:
-                        if split_name in splits:
-                            split_timestamp = splits[split_name].strip()
-                            # Check if it's a valid non-zero timestamp
-                            if split_timestamp and split_timestamp != "00:00:00.000":
-                                try:
-                                    # Convert absolute timestamp to seconds
-                                    split_seconds = timestamp_to_seconds(split_timestamp)
-                                    # Calculate relative to "start" split
-                                    relative_seconds = split_seconds - start_split_seconds
-                                    
-                                    # Format with colon separator (XX:YY where YY is centiseconds)
-                                    seconds_part = int(relative_seconds)
-                                    centiseconds_part = int((relative_seconds - seconds_part) * 100)
-                                    split_formatted = f"{seconds_part}\\:{centiseconds_part:02d}"
-                                    
-                                    # Escape the split name
-                                    split_name_safe = ff_escape_text(split_name)
-                                    
-                                    # Combine label and timestamp on same line with dash
-                                    combined_text = f"{split_name_safe} - {split_formatted}"
-                                    
-                                    # Y position: starts off-screen (-100), slides to final position (20)
-                                    final_y = 20
-                                    y_pos = f"if(lt(t\\,{slide_start})\\,-100\\,if(gte(t\\,{slide_end})\\,{final_y}\\,-100+((t-{slide_start})/{slide_duration})*({final_y}+100)))"
-                                    
-                                    # X position: centered (base position minus half of text width)
-                                    x_pos_centered = f"{x_base_positions[split_name]}-tw/2"
-                                    
-                                    # Combined label and timestamp on same line
-                                    filters.append(
-                                        f"drawtext=text='{combined_text}':fontcolor=white:fontsize=50:x={x_pos_centered}:y={y_pos}:enable='gte(t\\,{slide_start})'"
-                                    )
-                                except:
-                                    continue
+                        # Determine if this split has a value
+                        has_value = (split_name == 'LP' and lp_has_value) or (split_name == 'PP' and pp_has_value)
+                        
+                        if has_value:
+                            # Display the actual timestamp
+                            if split_name in splits:
+                                split_timestamp = splits[split_name].strip()
+                                if split_timestamp and split_timestamp != "00:00:00.000":
+                                    try:
+                                        # Convert absolute timestamp to seconds
+                                        split_seconds = timestamp_to_seconds(split_timestamp)
+                                        # Calculate relative to "start" split
+                                        relative_seconds = split_seconds - start_split_seconds
+                                        
+                                        # Format with colon separator (XX:YY where YY is centiseconds)
+                                        seconds_part = int(relative_seconds)
+                                        centiseconds_part = int((relative_seconds - seconds_part) * 100)
+                                        split_formatted = f"{seconds_part}\\:{centiseconds_part:02d}"
+                                        
+                                        # Escape the split name
+                                        split_name_safe = ff_escape_text(split_name)
+                                        
+                                        # Combine label and timestamp on same line with dash
+                                        combined_text = f"{split_name_safe} - {split_formatted}"
+                                        
+                                        # Y position: starts off-screen (-100), slides to final position (20)
+                                        final_y = 20
+                                        y_pos = f"if(lt(t\\,{slide_start})\\,-100\\,if(gte(t\\,{slide_end})\\,{final_y}\\,-100+((t-{slide_start})/{slide_duration})*({final_y}+100)))"
+                                        
+                                        # X position: centered (base position minus half of text width)
+                                        x_pos_centered = f"{x_base_positions[split_name]}-tw/2"
+                                        
+                                        # Combined label and timestamp on same line
+                                        filters.append(
+                                            f"drawtext=text='{combined_text}':fontcolor=white:fontsize=50:x={x_pos_centered}:y={y_pos}:enable='gte(t\\,{slide_start})'"
+                                        )
+                                    except:
+                                        continue
+                        else:
+                            # Display "NP" instead of timestamp
+                            split_name_safe = ff_escape_text(split_name)
+                            combined_text = f"{split_name_safe} - NP"
+                            
+                            # Y position: starts off-screen (-100), slides to final position (20)
+                            final_y = 20
+                            y_pos = f"if(lt(t\\,{slide_start})\\,-100\\,if(gte(t\\,{slide_end})\\,{final_y}\\,-100+((t-{slide_start})/{slide_duration})*({final_y}+100)))"
+                            
+                            # X position: centered (base position minus half of text width)
+                            x_pos_centered = f"{x_base_positions[split_name]}-tw/2"
+                            
+                            # Combined label and "NP" on same line
+                            filters.append(
+                                f"drawtext=text='{combined_text}':fontcolor=white:fontsize=50:x={x_pos_centered}:y={y_pos}:enable='gte(t\\,{slide_start})'"
+                            )
                     
                     # Process výstřik_LP and výstřik_PP splits at the top, to the right of LP and PP respectively
                     # These should be smaller and positioned to the right of their corresponding main splits
@@ -544,6 +623,19 @@ Examples:
     # Create out-parts directory based on video location
     parts_dir = prepare_parts_dir(args.source)
     print(f"📁 Cut videos will be saved to: {parts_dir}")
+
+    # Validate timestamps file first
+    print("🔍 Validating timestamps file...")
+    is_valid, warnings = validate_timestamps_file(args.times)
+    
+    if not is_valid:
+        print("\n⚠️  VALIDATION WARNINGS:")
+        for warning in warnings:
+            print(f"   {warning}")
+        print("\n❌ Validation failed. Please fix the issues in the timestamps file and try again.")
+        sys.exit(1)
+    
+    print("✅ Validation passed!\n")
 
     segments = parse_timestamps_file(args.times)
     if not segments:
