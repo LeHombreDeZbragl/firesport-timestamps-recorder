@@ -30,7 +30,7 @@ help:
 	@echo ""
 	@echo "$(BLUE)Examples:$(NC)"
 	@echo "  make download URL='https://youtube.com/watch?v=xyz' NAME=myvideo CHUNK=10"
-	@echo "  make cut SOURCE=dedictvigympl/dedictvigympl.mp4 TIMES=dedictvigympl/timestamps1.txt SORT=1"
+	@echo "  make cut SOURCE=dedictvigympl/dedictvigympl.mp4 TIMES=dedictvigympl/timestamps.txt SORT=1"
 	@echo "  make join FOLDER=dedictvigympl/out-parts"
 	@echo "  make gui"
 	@echo ""
@@ -133,8 +133,8 @@ testcut:
 	@rm -rf dedictvigympl/out-parts
 	@echo "$(GREEN)✅ Cleaned$(NC)"
 	@echo "$(YELLOW)🧪 Running cut on dedictvigympl...$(NC)"
-	@if [ -f "dedictvigympl/dedictvigympl.mp4" ] && [ -f "dedictvigympl/timestamps1.txt" ]; then \
-		$(PYTHON) firetimer-cutvid.py -s dedictvigympl/dedictvigympl.mp4 -t dedictvigympl/timestamps1.txt -z; \
+	@if [ -f "dedictvigympl/dedictvigympl.mp4" ] && [ -f "dedictvigympl/timestamps.txt" ]; then \
+		$(PYTHON) firetimer-cutvid.py -s dedictvigympl/dedictvigympl.mp4 -t dedictvigympl/timestamps.txt -z; \
 		echo "$(GREEN)✅ Cut complete$(NC)"; \
 		if [ -f "dedictvigympl/final_out_video.mp4" ]; then \
 			echo "$(GREEN)🎬 Opening video in player...$(NC)"; \
@@ -146,6 +146,6 @@ testcut:
 			fi \
 		fi \
 	else \
-		echo "$(RED)❌ Test files not found: dedictvigympl/dedictvigympl.mp4 or dedictvigympl/timestamps1.txt$(NC)"; \
+		echo "$(RED)❌ Test files not found: dedictvigympl/dedictvigympl.mp4 or dedictvigympl/timestamps.txt$(NC)"; \
 		exit 1; \
 	fi
