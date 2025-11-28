@@ -323,7 +323,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     
     # Add full-width grey bar at the bottom (background for title)
     filters.append(
-        "drawbox=x=0:y=ih-100:w=iw:h=140:color=0x808080@0.5:t=fill"
+        "drawbox=x=0:y=ih-140:w=iw:h=140:color=0x808080@0.5:t=fill"
     )
     
     # Title overlay (bottom left, smaller font, at the very bottom)
@@ -353,7 +353,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
         title_y = f"if(lt(t\\,{title_slide_in_start})\\,h+100\\,if(lt(t\\,{title_slide_in_end})\\,h+100-((t-{title_slide_in_start})/{title_slide_in_duration})*(130+th)\\,if(lt(t\\,{title_slide_out_start})\\,h-th-30\\,if(gte(t\\,{title_slide_out_end})\\,h+100\\,h-th-30+((t-{title_slide_out_start})/{title_slide_out_duration})*(130+th)))))"
         
         filters.append(
-            f"drawtext=text='{combined_text}':fontcolor=white:fontsize=50:x=20:y={title_y}"
+            f"drawtext=text='{combined_text}':fontcolor=white:fontsize=60:x=45:y={title_y}"
         )
     else:
         # Y position animation: slide in at start, then slide out when koš appears (or 4s after timer start)
@@ -368,13 +368,13 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
         title_y = f"if(lt(t\\,{title_slide_in_start})\\,h+100\\,if(lt(t\\,{title_slide_in_end})\\,h+100-((t-{title_slide_in_start})/{title_slide_in_duration})*(130+th)\\,if(lt(t\\,{title_slide_out_start})\\,h-th-30\\,if(gte(t\\,{title_slide_out_end})\\,h+100\\,h-th-30+((t-{title_slide_out_start})/{title_slide_out_duration})*(130+th)))))"
         
         filters.append(
-            f"drawtext=text='{title_safe}':fontcolor=white:fontsize=50:x=20:y={title_y}"
+            f"drawtext=text='{title_safe}':fontcolor=white:fontsize=60:x=45:y={title_y}"
         )
     
     # Timer overlay (bottom right) - separate elements to prevent width glitching
     # Base position for rightmost edge
     # Animate: slide in at start (same timing as title), slide down 1 second before end of video
-    timer_fontsize = 65
+    timer_fontsize = 80
     timer_slide_in_start = 0.2  # Same as title
     timer_slide_in_duration = 1.0  # Same as title
     timer_slide_in_end = timer_slide_in_start + timer_slide_in_duration
@@ -382,33 +382,36 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     timer_slide_out_duration = 1.0
     timer_slide_out_end = timer_slide_out_start + timer_slide_out_duration
     # Timer Y animation: slide in from bottom, stay visible, then slide down at end
-    # Before slide-in: h+100, During slide-in: animate to h-th-30, Stay visible, Then slide out to h+100
-    timer_y = f"if(lt(t\\,{timer_slide_in_start})\\,h+100\\,if(lt(t\\,{timer_slide_in_end})\\,h+100-((t-{timer_slide_in_start})/{timer_slide_in_duration})*(130+th)\\,if(lt(t\\,{timer_slide_out_start})\\,h-th-30\\,if(gte(t\\,{timer_slide_out_end})\\,h+100\\,h-th-30+((t-{timer_slide_out_start})/{timer_slide_out_duration})*(130+th)))))"
+    # Before slide-in: h+100, During slide-in: animate to h-th-40, Stay visible, Then slide out to h+100
+    timer_y = f"if(lt(t\\,{timer_slide_in_start})\\,h+100\\,if(lt(t\\,{timer_slide_in_end})\\,h+100-((t-{timer_slide_in_start})/{timer_slide_in_duration})*(140+th)\\,if(lt(t\\,{timer_slide_out_start})\\,h-th-40\\,if(gte(t\\,{timer_slide_out_end})\\,h+100\\,h-th-40+((t-{timer_slide_out_start})/{timer_slide_out_duration})*(140+th)))))"
     
-    # Position elements from right to left
+    # Position elements from right to left with fixed positions to prevent jumping
+    # Using fixed pixel positions from the right edge
+    base_x = 280  # Base offset from right edge for the rightmost digit
+    
     # Centiseconds ones digit (rightmost)
     filters.append(
-        f"drawtext=text='{timer_centis_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-tw-20:y={timer_y}"
+        f"drawtext=text='{timer_centis_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x}:y={timer_y}"
     )
     
     # Centiseconds tens digit
     filters.append(
-        f"drawtext=text='{timer_centis_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-tw-62:y={timer_y}"
+        f"drawtext=text='{timer_centis_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 48}:y={timer_y}"
     )
     
     # Colon separator
     filters.append(
-        f"drawtext=text='{timer_colon}':fontcolor=white:fontsize={timer_fontsize}:x=w-tw-102:y={timer_y}"
+        f"drawtext=text='{timer_colon}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 72}:y={timer_y}"
     )
     
     # Seconds ones digit
     filters.append(
-        f"drawtext=text='{timer_seconds_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-tw-122:y={timer_y}"
+        f"drawtext=text='{timer_seconds_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 120}:y={timer_y}"
     )
     
     # Seconds tens digit (only shown when >= 10)
     filters.append(
-        f"drawtext=text='{timer_seconds_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-tw-164:y={timer_y}:enable='{show_seconds_tens}'"
+        f"drawtext=text='{timer_seconds_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 168}:y={timer_y}:enable='{show_seconds_tens}'"
     )
     
     # Add split overlays (if splits are provided)
@@ -469,136 +472,105 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                     slide_end = top_splits_appear_at + slide_duration
                     
                     # Y positions (offset from bottom, above timer/title bar)
-                    lp_pp_y_offset = 60  # LP/PP splits: h-th-60 (60px above timer bar)
-                    vystrik_y_offset = 25  # Výstřik splits: h-th-25 (25px above timer bar, below LP/PP)
+                    lp_pp_y_offset = 30  # LP/PP splits: h-th-30 (30px above timer bar)
+                    vystrik_y_offset = 30  # Výstřik splits: h-th-30 (30px above timer bar, below LP/PP)
                     
                     # Bottom positions for PP and LP
                     # PP on the left, LP on the right
-                    pp_x_offset = 500  # Offset from left edge
-                    lp_x_offset = 800  # Offset from right edge
+                    pp_x_offset = 1320  # Offset from left edge
+                    lp_x_offset = 1630  # Offset from right edge
 
                     x_positions = {
                         'PP': f'w-tw-{pp_x_offset}',  # Left side
                         'LP': f'w-tw-{lp_x_offset}'   # Right side (width - offset)
                     }
                     
-                    # Process LP and PP splits
+                    # Process LP and PP splits with their výstřik splits
+                    # Each LP/PP gets 2 lines: top line (small font) for výstřik, bottom line (large font) for LP/PP
                     top_splits = ['LP', 'PP']
                     for split_name in top_splits:
                         # Determine if this split has a value
                         has_value = (split_name == 'LP' and lp_has_value) or (split_name == 'PP' and pp_has_value)
                         
-                        if has_value:
-                            # Display the actual timestamp
-                            if split_name in splits:
-                                split_timestamp = splits[split_name].strip()
-                                if split_timestamp and split_timestamp != "00:00:00.000":
-                                    try:
-                                        # Convert absolute timestamp to seconds
-                                        split_seconds = timestamp_to_seconds(split_timestamp)
-                                        # Calculate relative to "start" split
-                                        relative_seconds = split_seconds - start_split_seconds
-                                        
-                                        # Format with colon separator (XX:YY where YY is centiseconds)
-                                        seconds_part = int(relative_seconds)
-                                        centiseconds_part = int((relative_seconds - seconds_part) * 100)
-                                        split_formatted = f"{seconds_part}\\:{centiseconds_part:02d}"
-                                        
-                                        # Escape the split name
-                                        split_name_safe = ff_escape_text(split_name)
-                                        
-                                        # Combine label and timestamp on same line with dash
-                                        combined_text = f"{split_name_safe} - {split_formatted}"
-                                        
-                                        # Y position: slide in from bottom, stay visible, then slide out 1s before end
-                                        final_slide_out_start = duration - 1.0
-                                        final_slide_out_end = duration
-                                        # Before slide-in: h+5 (minimal distance), During slide-in: animate to h-th-{lp_pp_y_offset}, Stay visible, Then slide out to h+100
-                                        y_pos = f"if(lt(t\\,{slide_start})\\,h+5\\,if(lt(t\\,{slide_end})\\,h+5-((t-{slide_start})/{slide_duration})*({5+lp_pp_y_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{lp_pp_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{lp_pp_y_offset}+((t-{final_slide_out_start})/1.0)*({100+lp_pp_y_offset}+th)))))"
-                                        
-                                        # X position based on split name (PP left, LP right)
-                                        x_pos = x_positions[split_name]
-                                        
-                                        # Combined label and timestamp on same line
-                                        filters.append(
-                                            f"drawtext=text='{combined_text}':fontcolor=white:fontsize=50:x={x_pos}:y={y_pos}:enable='gte(t\\,{slide_start})'"
-                                        )
-                                    except:
-                                        continue
-                        else:
-                            # Display "NP" instead of timestamp
-                            split_name_safe = ff_escape_text(split_name)
-                            combined_text = f"{split_name_safe} - NP"
-                            
-                            # Y position: slide in from bottom, stay visible, then slide out 1s before end
-                            final_slide_out_start = duration - 1.0
-                            final_slide_out_end = duration
-                            # Before slide-in: h+5 (minimal distance), During slide-in: animate to h-th-{lp_pp_y_offset}, Stay visible, Then slide out to h+100
-                            y_pos = f"if(lt(t\\,{slide_start})\\,h+5\\,if(lt(t\\,{slide_end})\\,h+5-((t-{slide_start})/{slide_duration})*({5+lp_pp_y_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{lp_pp_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{lp_pp_y_offset}+((t-{final_slide_out_start})/1.0)*({100+lp_pp_y_offset}+th)))))"
-                            
-                            # X position based on split name (PP left, LP right)
-                            x_pos = x_positions[split_name]
-                            
-                            # Combined label and "NP" on same line
-                            filters.append(
-                                f"drawtext=text='{combined_text}':fontcolor=white:fontsize=50:x={x_pos}:y={y_pos}:enable='gte(t\\,{slide_start})'"
-                            )
-                    
-                    # Process výstřik_LP and výstřik_PP splits at the bottom, below LP and PP respectively
-                    # These should be smaller and positioned below their corresponding main splits
-                    # Map lowercase keys to capitalized display names and their main split positions
-                    vystrik_splits = {
-                        'výstřik_LP': ('Výstřik', 'LP'),  # (display_name, main_split_name)
-                        'výstřik_PP': ('Výstřik', 'PP')
-                    }
-                    
-                    for vystrik_key, (display_name, main_split_name) in vystrik_splits.items():
-                        if vystrik_key in splits:
-                            split_timestamp = splits[vystrik_key].strip()
-                            # Check if it's a valid non-zero timestamp
+                        # Get the main split timestamp (LP or PP)
+                        main_split_formatted = None
+                        if has_value and split_name in splits:
+                            split_timestamp = splits[split_name].strip()
                             if split_timestamp and split_timestamp != "00:00:00.000":
                                 try:
-                                    # Convert absolute timestamp to seconds
                                     split_seconds = timestamp_to_seconds(split_timestamp)
-                                    # Calculate relative to "start" split
                                     relative_seconds = split_seconds - start_split_seconds
-                                    
-                                    # Format with colon separator (XX:YY where YY is centiseconds)
                                     seconds_part = int(relative_seconds)
                                     centiseconds_part = int((relative_seconds - seconds_part) * 100)
-                                    split_formatted = f"{seconds_part}\\:{centiseconds_part:02d}"
-                                    
-                                    # Use the display name
-                                    split_name_safe = ff_escape_text(display_name)
-                                    
-                                    # Combine label and timestamp on same line with dash
-                                    combined_text = f"{split_name_safe} - {split_formatted}"
-                                    
-                                    # Y position: slide in from bottom, stay visible, then slide out 1s before end
-                                    final_slide_out_start = duration - 1.0
-                                    final_slide_out_end = duration
-                                    # Before slide-in: h+5 (minimal distance), During slide-in: animate to h-th-{vystrik_y_offset}, Stay visible, Then slide out to h+100
-                                    y_pos = f"if(lt(t\\,{slide_start})\\,h+5\\,if(lt(t\\,{slide_end})\\,h+5-((t-{slide_start})/{slide_duration})*({5+vystrik_y_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{vystrik_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{vystrik_y_offset}+((t-{final_slide_out_start})/1.0)*({100+vystrik_y_offset}+th)))))"
-                                    
-                                    # X position: same as the main split (LP or PP)
-                                    x_pos = x_positions[main_split_name]
-                                    
-                                    # Combined label and timestamp on same line
-                                    filters.append(
-                                        f"drawtext=text='{combined_text}':fontcolor=white:fontsize=25:x={x_pos}:y={y_pos}:enable='gte(t\\,{slide_start})'"
-                                    )
+                                    main_split_formatted = f"{seconds_part}\\:{centiseconds_part:02d}"
                                 except:
-                                    continue
+                                    pass
+                        
+                        if main_split_formatted is None:
+                            main_split_formatted = "NP"
+                        
+                        # Get the výstřik timestamp for this split
+                        vystrik_key = f'výstřik_{split_name}'
+                        vystrik_formatted = None
+                        if vystrik_key in splits:
+                            vystrik_timestamp = splits[vystrik_key].strip()
+                            if vystrik_timestamp and vystrik_timestamp != "00:00:00.000":
+                                try:
+                                    vystrik_seconds = timestamp_to_seconds(vystrik_timestamp)
+                                    vystrik_relative_seconds = vystrik_seconds - start_split_seconds
+                                    vystrik_seconds_part = int(vystrik_relative_seconds)
+                                    vystrik_centiseconds_part = int((vystrik_relative_seconds - vystrik_seconds_part) * 100)
+                                    vystrik_formatted = f"{vystrik_seconds_part}\\:{vystrik_centiseconds_part:02d}"
+                                except:
+                                    pass
+                        
+                        # Build the two lines
+                        split_name_safe = ff_escape_text(split_name)
+                        vystrik_name_safe = ff_escape_text('Výstřik')
+                        
+                        # Bottom line: "LP 12:34" or "PP 12:34"
+                        main_combined = f"{split_name_safe} {main_split_formatted}"
+                        
+                        # Top line: "Výstřik 12:34" (only if výstřik exists)
+                        if vystrik_formatted:
+                            vystrik_combined = f"{vystrik_name_safe} {vystrik_formatted}"
+                        else:
+                            vystrik_combined = None
+                        
+                        # Animation parameters
+                        final_slide_out_start = duration - 1.0
+                        final_slide_out_end = duration
+                        
+                        # Y position for main split (bottom line)
+                        y_pos_main = f"if(lt(t\\,{slide_start})\\,h+5\\,if(lt(t\\,{slide_end})\\,h+5-((t-{slide_start})/{slide_duration})*({5+lp_pp_y_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{lp_pp_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{lp_pp_y_offset}+((t-{final_slide_out_start})/1.0)*({100+lp_pp_y_offset}+th)))))"
+                        
+                        # Y position for výstřik (top line) - 60 pixels above main
+                        label_offset = 60
+                        y_pos_vystrik = f"if(lt(t\\,{slide_start})\\,h+5\\,if(lt(t\\,{slide_end})\\,h+5-((t-{slide_start})/{slide_duration})*({5+lp_pp_y_offset+label_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{lp_pp_y_offset+label_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{lp_pp_y_offset+label_offset}+((t-{final_slide_out_start})/1.0)*({100+lp_pp_y_offset+label_offset}+th)))))"
+                        
+                        # X position based on split name (PP left, LP right)
+                        x_pos = x_positions[split_name]
+                        
+                        # Main split line (bottom, larger font)
+                        filters.append(
+                            f"drawtext=text='{main_combined}':fontcolor=white:fontsize=60:x={x_pos}:y={y_pos_main}:enable='gte(t\\,{slide_start})'"
+                        )
+                        
+                        # Výstřik line (top, smaller font) - only if it exists
+                        if vystrik_combined:
+                            filters.append(
+                                f"drawtext=text='{vystrik_combined}':fontcolor=white:fontsize=30:x={x_pos}:y={y_pos_vystrik}:enable='gte(t\\,{slide_start})'"
+                            )
                     
                     # Process koš, voda, rozdělovač splits at the bottom
                     # These appear left of the timer: rozdělovač (leftmost), voda (middle), koš (closest to timer)
                     bottom_split_names = [
-                        ('rozdělovač', 'Rozdělovač', 1000),   # (key, display_name, x_offset_from_timer)
-                        ('voda', 'Voda', 700),
-                        ('koš', 'Koš', 400)
+                        ('rozdělovač', 'Rozdělovač', 980),   # (key, display_name, x_offset_from_timer)
+                        ('voda', 'Voda', 800),
+                        ('koš', 'Koš', 620)
                     ]
                     
-                    bottom_splits_y_offset = 60  # Same height as LP/PP splits
+                    bottom_splits_y_offset = 30  # Same height as LP/PP splits
                     
                     for split_key, display_name, x_offset_from_timer in bottom_split_names:
                         if split_key in splits:
@@ -622,26 +594,32 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                                     # Escape the display name
                                     split_name_safe = ff_escape_text(display_name)
                                     
-                                    # Combine label and timestamp on same line with dash
-                                    combined_text = f"{split_name_safe} - {split_formatted}"
-                                    
                                     # Animation parameters for this split
                                     split_slide_duration = 0.4  # Faster slide-in
                                     split_slide_start = split_appears_at
                                     split_slide_end = split_appears_at + split_slide_duration
                                     
-                                    # Y position: slide in from bottom, stay visible, then slide out 1s before end
+                                    # Y position for timestamp: slide in from bottom, stay visible, then slide out 1s before end
                                     final_slide_out_start = duration - 1.0
                                     final_slide_out_end = duration
                                     # Before slide-in: h+5 (minimal distance), During slide-in: animate to h-th-{bottom_splits_y_offset}, Stay visible, Then slide out to h+100
-                                    y_pos = f"if(lt(t\\,{split_slide_start})\\,h+5\\,if(lt(t\\,{split_slide_end})\\,h+5-((t-{split_slide_start})/{split_slide_duration})*({5+bottom_splits_y_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{bottom_splits_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{bottom_splits_y_offset}+((t-{final_slide_out_start})/1.0)*({100+bottom_splits_y_offset}+th)))))"
+                                    y_pos_timestamp = f"if(lt(t\\,{split_slide_start})\\,h+5\\,if(lt(t\\,{split_slide_end})\\,h+5-((t-{split_slide_start})/{split_slide_duration})*({5+bottom_splits_y_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{bottom_splits_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{bottom_splits_y_offset}+((t-{final_slide_out_start})/1.0)*({100+bottom_splits_y_offset}+th)))))"
+                                    
+                                    # Y position for label: same animation but offset above the timestamp (add 30 pixels above)
+                                    label_offset = 60
+                                    y_pos_label = f"if(lt(t\\,{split_slide_start})\\,h+5\\,if(lt(t\\,{split_slide_end})\\,h+5-((t-{split_slide_start})/{split_slide_duration})*({5+bottom_splits_y_offset+label_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{bottom_splits_y_offset+label_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{bottom_splits_y_offset+label_offset}+((t-{final_slide_out_start})/1.0)*({100+bottom_splits_y_offset+label_offset}+th)))))"
                                     
                                     # X position: left of timer (timer is at w-164, so position relative to that)
                                     x_pos = f"w-{x_offset_from_timer}-tw"
                                     
-                                    # Combined label and timestamp on same line
+                                    # Timestamp (larger font)
                                     filters.append(
-                                        f"drawtext=text='{combined_text}':fontcolor=white:fontsize=40:x={x_pos}:y={y_pos}:enable='gte(t\\,{split_slide_start})'"
+                                        f"drawtext=text='{split_formatted}':fontcolor=white:fontsize=60:x={x_pos}:y={y_pos_timestamp}:enable='gte(t\\,{split_slide_start})'"
+                                    )
+                                    
+                                    # Label above timestamp (smaller font)
+                                    filters.append(
+                                        f"drawtext=text='{split_name_safe}':fontcolor=white:fontsize=30:x={x_pos}:y={y_pos_label}:enable='gte(t\\,{split_slide_start})'"
                                     )
                                 except:
                                     continue
