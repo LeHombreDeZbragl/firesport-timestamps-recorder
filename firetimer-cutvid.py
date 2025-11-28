@@ -396,22 +396,22 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     
     # Centiseconds tens digit
     filters.append(
-        f"drawtext=text='{timer_centis_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 48}:y={timer_y}"
+        f"drawtext=text='{timer_centis_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 50}:y={timer_y}"
     )
     
     # Colon separator
     filters.append(
-        f"drawtext=text='{timer_colon}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 72}:y={timer_y}"
+        f"drawtext=text='{timer_colon}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 76}:y={timer_y}"
     )
     
     # Seconds ones digit
     filters.append(
-        f"drawtext=text='{timer_seconds_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 120}:y={timer_y}"
+        f"drawtext=text='{timer_seconds_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 123}:y={timer_y}"
     )
     
     # Seconds tens digit (only shown when >= 10)
     filters.append(
-        f"drawtext=text='{timer_seconds_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 168}:y={timer_y}:enable='{show_seconds_tens}'"
+        f"drawtext=text='{timer_seconds_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 173}:y={timer_y}:enable='{show_seconds_tens}'"
     )
     
     # Add split overlays (if splits are provided)
@@ -472,12 +472,13 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                     slide_end = top_splits_appear_at + slide_duration
                     
                     # Y positions (offset from bottom, above timer/title bar)
-                    lp_pp_y_offset = 30  # LP/PP splits: h-th-30 (30px above timer bar)
-                    vystrik_y_offset = 30  # Výstřik splits: h-th-30 (30px above timer bar, below LP/PP)
+                    # Use fixed offset from bottom for all timestamps to ensure perfect alignment
+                    timestamp_y_offset = 72  # All timestamps at same height: 72px above timer bar
+                    label_y_offset = 113  # All labels at same height: 113px above timer bar (41px above timestamps)
                     
                     # Bottom positions for PP and LP
                     # PP on the left, LP on the right
-                    pp_x_offset = 1320  # Offset from left edge
+                    pp_x_offset = 1315  # Offset from left edge
                     lp_x_offset = 1630  # Offset from right edge
 
                     x_positions = {
@@ -541,12 +542,11 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                         final_slide_out_start = duration - 1.0
                         final_slide_out_end = duration
                         
-                        # Y position for main split (bottom line)
-                        y_pos_main = f"if(lt(t\\,{slide_start})\\,h+5\\,if(lt(t\\,{slide_end})\\,h+5-((t-{slide_start})/{slide_duration})*({5+lp_pp_y_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{lp_pp_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{lp_pp_y_offset}+((t-{final_slide_out_start})/1.0)*({100+lp_pp_y_offset}+th)))))"
+                        # Y position for main split (bottom line) - all timestamps aligned
+                        y_pos_main = f"if(lt(t\\,{slide_start})\\,h+5\\,if(lt(t\\,{slide_end})\\,h+5-((t-{slide_start})/{slide_duration})*({5+timestamp_y_offset})\\,if(lt(t\\,{final_slide_out_start})\\,h-{timestamp_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-{timestamp_y_offset}+((t-{final_slide_out_start})/1.0)*({100+timestamp_y_offset})))))"
                         
-                        # Y position for výstřik (top line) - 60 pixels above main
-                        label_offset = 60
-                        y_pos_vystrik = f"if(lt(t\\,{slide_start})\\,h+5\\,if(lt(t\\,{slide_end})\\,h+5-((t-{slide_start})/{slide_duration})*({5+lp_pp_y_offset+label_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{lp_pp_y_offset+label_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{lp_pp_y_offset+label_offset}+((t-{final_slide_out_start})/1.0)*({100+lp_pp_y_offset+label_offset}+th)))))"
+                        # Y position for výstřik (top line) - all labels aligned
+                        y_pos_vystrik = f"if(lt(t\\,{slide_start})\\,h+5\\,if(lt(t\\,{slide_end})\\,h+5-((t-{slide_start})/{slide_duration})*({5+label_y_offset})\\,if(lt(t\\,{final_slide_out_start})\\,h-{label_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-{label_y_offset}+((t-{final_slide_out_start})/1.0)*({100+label_y_offset})))))"
                         
                         # X position based on split name (PP left, LP right)
                         x_pos = x_positions[split_name]
@@ -569,8 +569,6 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                         ('voda', 'Voda', 800),
                         ('koš', 'Koš', 620)
                     ]
-                    
-                    bottom_splits_y_offset = 30  # Same height as LP/PP splits
                     
                     for split_key, display_name, x_offset_from_timer in bottom_split_names:
                         if split_key in splits:
@@ -602,12 +600,11 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                                     # Y position for timestamp: slide in from bottom, stay visible, then slide out 1s before end
                                     final_slide_out_start = duration - 1.0
                                     final_slide_out_end = duration
-                                    # Before slide-in: h+5 (minimal distance), During slide-in: animate to h-th-{bottom_splits_y_offset}, Stay visible, Then slide out to h+100
-                                    y_pos_timestamp = f"if(lt(t\\,{split_slide_start})\\,h+5\\,if(lt(t\\,{split_slide_end})\\,h+5-((t-{split_slide_start})/{split_slide_duration})*({5+bottom_splits_y_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{bottom_splits_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{bottom_splits_y_offset}+((t-{final_slide_out_start})/1.0)*({100+bottom_splits_y_offset}+th)))))"
+                                    # Use same Y offset as LP/PP timestamps for perfect alignment
+                                    y_pos_timestamp = f"if(lt(t\\,{split_slide_start})\\,h+5\\,if(lt(t\\,{split_slide_end})\\,h+5-((t-{split_slide_start})/{split_slide_duration})*({5+timestamp_y_offset})\\,if(lt(t\\,{final_slide_out_start})\\,h-{timestamp_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-{timestamp_y_offset}+((t-{final_slide_out_start})/1.0)*({100+timestamp_y_offset})))))"
                                     
-                                    # Y position for label: same animation but offset above the timestamp (add 30 pixels above)
-                                    label_offset = 60
-                                    y_pos_label = f"if(lt(t\\,{split_slide_start})\\,h+5\\,if(lt(t\\,{split_slide_end})\\,h+5-((t-{split_slide_start})/{split_slide_duration})*({5+bottom_splits_y_offset+label_offset}+th)\\,if(lt(t\\,{final_slide_out_start})\\,h-th-{bottom_splits_y_offset+label_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-th-{bottom_splits_y_offset+label_offset}+((t-{final_slide_out_start})/1.0)*({100+bottom_splits_y_offset+label_offset}+th)))))"
+                                    # Y position for label: use same Y offset as Výstřik labels for perfect alignment
+                                    y_pos_label = f"if(lt(t\\,{split_slide_start})\\,h+5\\,if(lt(t\\,{split_slide_end})\\,h+5-((t-{split_slide_start})/{split_slide_duration})*({5+label_y_offset})\\,if(lt(t\\,{final_slide_out_start})\\,h-{label_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-{label_y_offset}+((t-{final_slide_out_start})/1.0)*({100+label_y_offset})))))"
                                     
                                     # X position: left of timer (timer is at w-164, so position relative to that)
                                     x_pos = f"w-{x_offset_from_timer}-tw"
