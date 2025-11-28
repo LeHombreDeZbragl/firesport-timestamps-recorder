@@ -299,6 +299,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     show_seconds_tens = f"gte({timer_value}\\,10)"
     
     # Calculate when koš appears (for title slide-out animation)
+    # Title should start sliding out 1 second BEFORE koš appears
     kos_appears_at = None
     if splits:
         start_split_timestamp = splits.get('start', '').strip()
@@ -307,35 +308,36 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                 start_split_seconds = timestamp_to_seconds(start_split_timestamp)
                 if 'koš' in splits and splits['koš'].strip() and splits['koš'].strip() != "00:00:00.000":
                     kos_seconds = timestamp_to_seconds(splits['koš'].strip())
-                    kos_appears_at = kos_seconds - start_seconds
+                    # Start sliding 1 second BEFORE koš appears
+                    kos_appears_at = (kos_seconds - start_seconds) - 1.0
                 else:
-                    # If koš doesn't exist, use timer_offset + 4 seconds
-                    kos_appears_at = timer_offset + 4.0
+                    # If koš doesn't exist, use timer_offset + 3 seconds
+                    kos_appears_at = timer_offset + 3.0
             except:
                 pass
     
-    # If kos_appears_at is still None, set it to 4 seconds after timer starts
+    # If kos_appears_at is still None, set it to 3 seconds after timer starts
     if kos_appears_at is None:
-        kos_appears_at = timer_offset + 4.0
+        kos_appears_at = timer_offset + 3.0
     
     # Build drawtext filters
     filters = ["setpts=PTS-STARTPTS"]  # Reset timestamps to start from 0
     
     # Add full-width grey bar at the bottom with smooth gradient transparency
-    # Create smooth gradient by stacking boxes every 2 pixels with gradually increasing opacity
+    # Create smooth gradient by stacking boxes every 3 pixels with gradually increasing opacity
     bar_height = 140
-    step = 2  # Height of each box layer in pixels
+    step = 3  # Height of each box layer in pixels
     
     for i in range(0, bar_height, step):
-        # Calculate opacity: starts at 0.2 at top, goes to 0.8 at bottom
+        # Calculate opacity: starts at 0.55 at top, goes to 1 at bottom
         # Linear interpolation: opacity = min_opacity + (max_opacity - min_opacity) * progress
         progress = i / bar_height  # 0.0 at top, 1.0 at bottom
-        opacity = 0.2 + (0.8 - 0.2) * progress
+        opacity = 0.55 + (1.0 - 0.55) * progress
         
         # Y position: starts from top of bar (ih-140) and goes down
         y_pos = f"ih-{bar_height - i}"
         
-        filters.append(f"drawbox=x=0:y={y_pos}:w=iw:h={step}:color=0x808080@{opacity:.3f}:t=fill")
+        filters.append(f"drawbox=x=0:y={y_pos}:w=iw:h={step}:color=0x848484@{opacity:.3f}:t=fill")
     
     # Title overlay (bottom left, smaller font, at the very bottom)
     # Label is now to the right of the title on the same line
@@ -350,7 +352,21 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     if label is not None:
         label_safe = ff_escape_text(label)
         # Combined title and label on same line
-        combined_text = f"{title_safe} - {label_safe}"
+        # Format based on label type:
+        # - For "X.místo": "X. title" or "NP title" if label is "NP"
+        # - For "X.útok": "X.útok title" (even if NP, though that shouldn't happen)
+        if label == "NP":
+            combined_text = f"NP {title_safe}"
+        elif ".místo" in label:
+            # Extract the number and format as "X. title"
+            position_num = label.replace(".místo", "")
+            combined_text = f"{position_num}. {title_safe}"
+        elif ".útok" in label:
+            # Format as "X.útok title"
+            combined_text = f"{label_safe} {title_safe}"
+        else:
+            # Fallback to old format
+            combined_text = f"{title_safe} - {label_safe}"
         
         # Y position animation: slide in at start, then slide out when koš appears (or 4s after timer start)
         title_slide_out_duration = 0.8
@@ -417,12 +433,12 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     
     # Seconds ones digit
     filters.append(
-        f"drawtext=text='{timer_seconds_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 123}:y={timer_y}"
+        f"drawtext=text='{timer_seconds_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 124}:y={timer_y}"
     )
     
     # Seconds tens digit (only shown when >= 10)
     filters.append(
-        f"drawtext=text='{timer_seconds_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 173}:y={timer_y}:enable='{show_seconds_tens}'"
+        f"drawtext=text='{timer_seconds_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 174}:y={timer_y}:enable='{show_seconds_tens}'"
     )
     
     # Add split overlays (if splits are provided)
