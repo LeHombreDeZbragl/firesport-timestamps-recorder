@@ -321,10 +321,21 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     # Build drawtext filters
     filters = ["setpts=PTS-STARTPTS"]  # Reset timestamps to start from 0
     
-    # Add full-width grey bar at the bottom (background for title)
-    filters.append(
-        "drawbox=x=0:y=ih-140:w=iw:h=140:color=0x808080@0.5:t=fill"
-    )
+    # Add full-width grey bar at the bottom with smooth gradient transparency
+    # Create smooth gradient by stacking boxes every 2 pixels with gradually increasing opacity
+    bar_height = 140
+    step = 2  # Height of each box layer in pixels
+    
+    for i in range(0, bar_height, step):
+        # Calculate opacity: starts at 0.2 at top, goes to 0.8 at bottom
+        # Linear interpolation: opacity = min_opacity + (max_opacity - min_opacity) * progress
+        progress = i / bar_height  # 0.0 at top, 1.0 at bottom
+        opacity = 0.2 + (0.8 - 0.2) * progress
+        
+        # Y position: starts from top of bar (ih-140) and goes down
+        y_pos = f"ih-{bar_height - i}"
+        
+        filters.append(f"drawbox=x=0:y={y_pos}:w=iw:h={step}:color=0x808080@{opacity:.3f}:t=fill")
     
     # Title overlay (bottom left, smaller font, at the very bottom)
     # Label is now to the right of the title on the same line
@@ -387,7 +398,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     
     # Position elements from right to left with fixed positions to prevent jumping
     # Using fixed pixel positions from the right edge
-    base_x = 280  # Base offset from right edge for the rightmost digit
+    base_x = 240  # Base offset from right edge for the rightmost digit
     
     # Centiseconds ones digit (rightmost)
     filters.append(
@@ -565,9 +576,9 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                     # Process koš, voda, rozdělovač splits at the bottom
                     # These appear left of the timer: rozdělovač (leftmost), voda (middle), koš (closest to timer)
                     bottom_split_names = [
-                        ('rozdělovač', 'Rozdělovač', 980),   # (key, display_name, x_offset_from_timer)
-                        ('voda', 'Voda', 800),
-                        ('koš', 'Koš', 620)
+                        ('rozdělovač', 'Rozdělovač', 960),   # (key, display_name, x_offset_from_timer)
+                        ('voda', 'Voda', 780),
+                        ('koš', 'Koš', 600)
                     ]
                     
                     for split_key, display_name, x_offset_from_timer in bottom_split_names:
@@ -626,18 +637,54 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     # Join all filters
     vf = ",".join(filters)
     
-    cmd = [
-        "ffmpeg",
-        "-ss", start, "-i", input_file,
-        "-t", str(duration),
-        "-vf", vf,
-        "-c:v", "libx264", "-preset", "ultrafast",
-        "-crf", "18",
-        "-c:a", "aac", "-b:a", "128k",
-        "-avoid_negative_ts", "make_zero",
-        "-fflags", "+genpts",
-        "-y", out
-    ]
+    # Check if logo file exists and prepare command accordingly
+    logo_path = os.path.join(os.path.dirname(os.path.abspath(input_file)), "sdh_zbraslav-logo.png")
+    script_dir_logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sdh_zbraslav-logo.png")
+    
+    # Try both locations: same directory as video, or same directory as script
+    if os.path.exists(logo_path):
+        use_logo = True
+        logo_file = logo_path
+    elif os.path.exists(script_dir_logo):
+        use_logo = True
+        logo_file = script_dir_logo
+    else:
+        use_logo = False
+    
+    if use_logo:
+        # Build complex filter with logo overlay
+        # [0:v] is the main video, [1:v] is the logo
+        # Apply all filters to main video first, then overlay the logo at the end
+        complex_filter = f"[0:v]{vf}[vid];[1:v]scale=95:-1[logo];[vid][logo]overlay=W-w-30:H-h-20"
+        
+        cmd = [
+            "ffmpeg",
+            "-ss", start, "-i", input_file,
+            "-loop", "1", "-i", logo_file,
+            "-t", str(duration),
+            "-filter_complex", complex_filter,
+            "-c:v", "libx264", "-preset", "ultrafast",
+            "-crf", "18",
+            "-c:a", "aac", "-b:a", "128k",
+            "-avoid_negative_ts", "make_zero",
+            "-fflags", "+genpts",
+            "-y", out
+        ]
+    else:
+        # No logo, use simple filter
+        cmd = [
+            "ffmpeg",
+            "-ss", start, "-i", input_file,
+            "-t", str(duration),
+            "-vf", vf,
+            "-c:v", "libx264", "-preset", "ultrafast",
+            "-crf", "18",
+            "-c:a", "aac", "-b:a", "128k",
+            "-avoid_negative_ts", "make_zero",
+            "-fflags", "+genpts",
+            "-y", out
+        ]
+    
     subprocess.run(cmd, check=True)
     return out
 
