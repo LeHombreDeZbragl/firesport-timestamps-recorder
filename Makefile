@@ -33,12 +33,12 @@ help:
 	@echo ""
 	@echo "$(BLUE)Examples:$(NC)"
 	@echo "  make download URL='https://youtube.com/watch?v=xyz' NAME=myvideo CHUNK=10"
-	@echo "  make cut SOURCE=dedictvigympl/dedictvigympl.mp4 TIMES=dedictvigympl/timestamps.txt SORT=1"
-	@echo "  make join FOLDER=dedictvigympl/out-parts"
+	@echo "  make cut SOURCE=extraliga-netin/extraliga-netin.mp4 TIMES=extraliga-netin/timestamps.txt SORT=1"
+	@echo "  make join FOLDER=extraliga-netin/out-parts"
 	@echo "  make gui"
 	@echo ""
 	@echo "$(BLUE)Quick Test Commands:$(NC)"
-	@echo "  make testcut        - Clean and test cut with dedictvigympl example"
+	@echo "  make testcut        - Clean and test cut with extraliga-netin example"
 
 setup:
 	@echo "$(GREEN)🔥 Setting up FIRE environment...$(NC)"
@@ -129,26 +129,27 @@ gui:
 	@echo "$(GREEN)🎮 Launching GUI...$(NC)"
 	@$(PYTHON) video_timestamp_recorder.py
 
-# Test command - clean and run cut on dedictvigympl
+# Test command - clean and run cut on extraliga-netin
 testcut:
-	@echo "$(YELLOW)🧪 Cleaning dedictvigympl outputs...$(NC)"
-	@rm -f dedictvigympl/final_out_video.mp4
-	@rm -rf dedictvigympl/out-parts
+	@echo "$(YELLOW)🧪 Cleaning extraliga-netin outputs...$(NC)"
+	@rm -f extraliga-netin/final_out_video.mp4
+	@rm -f extraliga-netin/out-parts/*.mp4 2>/dev/null || true
+	@rm -rf extraliga-netin/out-parts
 	@echo "$(GREEN)✅ Cleaned$(NC)"
-	@echo "$(YELLOW)🧪 Running cut on dedictvigympl...$(NC)"
-	@if [ -f "dedictvigympl/dedictvigympl.mp4" ] && [ -f "dedictvigympl/timestamps.txt" ]; then \
-		$(PYTHON) firetimer-cutvid.py -s dedictvigympl/dedictvigympl.mp4 -t dedictvigympl/timestamps.txt -z; \
+	@echo "$(YELLOW)🧪 Running cut on extraliga-netin...$(NC)"
+	@if [ -f "extraliga-netin/extraliga-netin.mp4" ] && [ -f "extraliga-netin/timestamps.txt" ]; then \
+		$(PYTHON) firetimer-cutvid.py -s extraliga-netin/extraliga-netin.mp4 -t extraliga-netin/timestamps.txt -z; \
 		echo "$(GREEN)✅ Cut complete$(NC)"; \
-		if [ -f "dedictvigympl/final_out_video.mp4" ]; then \
+		if [ -f "extraliga-netin/final_out_video.mp4" ]; then \
 			echo "$(GREEN)🎬 Opening video in player...$(NC)"; \
 			if command -v ffplay >/dev/null 2>&1; then \
-				ffplay dedictvigympl/final_out_video.mp4 & \
+				ffplay extraliga-netin/final_out_video.mp4 & \
 			else \
 				echo "$(YELLOW)⚠️  No video player found (ffplay)$(NC)"; \
-				echo "$(YELLOW)   Video saved at: dedictvigympl/final_out_video.mp4$(NC)"; \
+				echo "$(YELLOW)   Video saved at: extraliga-netin/final_out_video.mp4$(NC)"; \
 			fi \
 		fi \
 	else \
-		echo "$(RED)❌ Test files not found: dedictvigympl/dedictvigympl.mp4 or dedictvigympl/timestamps.txt$(NC)"; \
+		echo "$(RED)❌ Test files not found: extraliga-netin/extraliga-netin.mp4 or extraliga-netin/timestamps.txt$(NC)"; \
 		exit 1; \
 	fi

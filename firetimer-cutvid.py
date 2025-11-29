@@ -774,6 +774,11 @@ Examples:
                 # New format with splits
                 title, start, end, splits = seg_data
                 
+                # Check if title indicates NP (e.g., "n na PP", "n na LP", or starts with "NP")
+                title_lower = title.lower().strip()
+                if title_lower.startswith('n na ') or title_lower.startswith('np'):
+                    return (False, float('inf'))
+                
                 if not splits or 'start' not in splits or not splits['start'].strip():
                     # Missing start split - invalid
                     return (False, float('inf'))
@@ -783,23 +788,39 @@ Examples:
                     
                     lp_seconds = 0
                     pp_seconds = 0
+                    lp_valid = False
+                    pp_valid = False
                     
                     if 'LP' in splits and splits['LP'].strip():
                         try:
-                            lp_seconds = timestamp_to_seconds(splits['LP'].strip())
+                            lp_timestamp = splits['LP'].strip()
+                            # Check if it's not zero
+                            if lp_timestamp != "00:00:00.000":
+                                lp_seconds = timestamp_to_seconds(lp_timestamp)
+                                lp_valid = True
                         except:
                             pass
                     
                     if 'PP' in splits and splits['PP'].strip():
                         try:
-                            pp_seconds = timestamp_to_seconds(splits['PP'].strip())
+                            pp_timestamp = splits['PP'].strip()
+                            # Check if it's not zero
+                            if pp_timestamp != "00:00:00.000":
+                                pp_seconds = timestamp_to_seconds(pp_timestamp)
+                                pp_valid = True
                         except:
                             pass
                     
                     # If both LP and PP are missing or zero - invalid
-                    if lp_seconds == 0 and pp_seconds == 0:
+                    # OR if only one is valid (one pipe only) - also invalid
+                    if not lp_valid and not pp_valid:
                         return (False, float('inf'))
                     
+                    # If only one pipe has a valid time, treat as invalid (NP)
+                    if lp_valid != pp_valid:  # XOR: one is valid, the other is not
+                        return (False, float('inf'))
+                    
+                    # Both pipes have valid times - valid placement
                     # Return the relative time of max(LP, PP) from start
                     max_split = max(lp_seconds, pp_seconds)
                     return (True, max_split - start_split_seconds)
