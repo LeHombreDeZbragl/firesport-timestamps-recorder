@@ -13,5 +13,3 @@ python-vlc>=3.0.18121
 # Development and testing (optional)
 # pytest>=7.0.0
 # black>=23.0.0  # Code formatter
-
-# Note: argparse, subprocess, os are built-in Python modules

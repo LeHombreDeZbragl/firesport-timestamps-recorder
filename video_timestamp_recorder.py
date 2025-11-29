@@ -20,19 +20,21 @@ Interface:
     * Shift+→ - Forward 10 frames
   
 Marking Segments:
-  1. Position video at start point → Press Q or click "Začátek"
-  2. (Optional) Mark up to 9 split points → Press W/E/R/T/Y/U/I/O/P
-  3. (Optional) Type segment name in the text field → Press N to focus
-  4. Position video at end point → Press [ or click "Konec"
+  1. Position video at start point → Press W or click "Začátek"
+  2. (Optional) Mark up to 9 split points → Press E/S/D/F/G/X/C/V/B
+  3. (Optional) Adjust start split with -150ms → Press R
+  4. (Optional) Type segment name in the text field → Press N to focus
+  5. Position video at end point → Press T or click "Konec"
   5. Segment is automatically saved with name (or auto-generated number)
   6. All segments exported to 'timestamps.txt' in format:
      title;start_time;split1;split2;...;split9;end_time
 
 Keyboard Shortcuts:
-  Q              - Mark začátek (start)
-  W, E, R, T,    - Mark splits 1-9
-  Y, U, I, P
-  [              - Mark konec (end)
+  W              - Mark začátek (start)
+  E, S, D, F,    - Mark splits 1-9
+  G, X, C, V, B
+  R              - Subtract 150ms from start split
+  T              - Mark konec (end)
   N              - Focus segment name field
   Space          - Play/Pause
   , (comma)      - Back 1 frame
@@ -134,9 +136,9 @@ class VideoPlayer(QMainWindow):
         # Video frame
         self.video_frame = QFrame()
         self.video_frame.setStyleSheet("background-color: black;")
-        self.video_frame.setMinimumHeight(600)
+        self.video_frame.setMinimumHeight(700)
         self.video_frame.setMinimumWidth(800)
-        left_layout.addWidget(self.video_frame)
+        left_layout.addWidget(self.video_frame, stretch=1)
         
         # Set the video output to the frame
         if sys.platform.startswith('linux'):
@@ -162,11 +164,14 @@ class VideoPlayer(QMainWindow):
         self.progress_slider.setMaximum(1000)
         self.progress_slider.sliderPressed.connect(self.slider_pressed)
         self.progress_slider.sliderReleased.connect(self.slider_released)
+        self.progress_slider.sliderMoved.connect(self.slider_moved)
         left_layout.addWidget(self.progress_slider)
         
         # Control buttons
         controls_group = QGroupBox("Video Controls")
         controls_layout = QVBoxLayout(controls_group)
+        controls_layout.setSpacing(10)
+        controls_layout.setContentsMargins(10, 10, 10, 10)
         
         # First row: Load, Play, Stop
         row1_layout = QHBoxLayout()
@@ -230,9 +235,9 @@ class VideoPlayer(QMainWindow):
         naming_layout.addWidget(self.segment_name_input)
         timestamp_layout.addLayout(naming_layout)
         
-        # Start button with editable time
+        # Start button with editable time and -150ms button
         start_layout = QHBoxLayout()
-        self.start_button = QPushButton("🟢 Začátek (Q)")
+        self.start_button = QPushButton("🟢 Začátek (W)")
         self.start_button.clicked.connect(self.save_start_timestamp)
         self.start_button.setEnabled(False)
         self.start_button.setMinimumWidth(150)
@@ -243,31 +248,28 @@ class VideoPlayer(QMainWindow):
         self.start_time_input.setStyleSheet("color: green; font-weight: bold;")
         self.start_time_input.textChanged.connect(self.on_start_time_edited)
         start_layout.addWidget(self.start_time_input)
+        
+        # -150ms button on same line
+        self.minus_150_btn = QPushButton("-150ms (R)")
+        self.minus_150_btn.setMaximumWidth(100)
+        self.minus_150_btn.clicked.connect(self.subtract_150ms_from_start)
+        start_layout.addWidget(self.minus_150_btn)
+        
         timestamp_layout.addLayout(start_layout)
         
         # Split buttons with inline editable time (absolute and relative)
         self.split_buttons = []
         self.split_time_inputs = []
         self.split_relative_inputs = []
-        split_keys = ['W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P']
+        split_keys = ['E', 'S', 'D', 'F', 'G', 'X', 'C', 'V', 'B']
         
         for i in range(9):
             split_layout = QHBoxLayout()
             
-            # Add -150ms button for first split (start) at the beginning
-            if i == 0:
-                minus_150_btn = QPushButton("-150ms")
-                minus_150_btn.setMaximumWidth(60)
-                minus_150_btn.clicked.connect(self.subtract_150ms_from_start)
-                split_layout.addWidget(minus_150_btn)
-            
             btn = QPushButton(f"{self.split_names[i]} ({split_keys[i]})")
             btn.clicked.connect(lambda checked, idx=i: self.save_split_timestamp(idx))
             btn.setEnabled(False)
-            if i == 0:
-                btn.setMinimumWidth(60)  # Smaller width for first split to share space with -150ms button
-            else:
-                btn.setMinimumWidth(120)
+            btn.setMinimumWidth(120)
             self.split_buttons.append(btn)
             split_layout.addWidget(btn)
             
@@ -291,7 +293,7 @@ class VideoPlayer(QMainWindow):
         
         # End button with editable time
         end_layout = QHBoxLayout()
-        self.end_button = QPushButton("🔴 Konec ([)")
+        self.end_button = QPushButton("🔴 Konec (T)")
         self.end_button.clicked.connect(self.save_end_timestamp)
         self.end_button.setEnabled(False)
         self.end_button.setMinimumWidth(150)
@@ -339,21 +341,25 @@ class VideoPlayer(QMainWindow):
         
     def setup_shortcuts(self):
         """Setup keyboard shortcuts"""
-        # Q key for start timestamp
-        self.start_shortcut = QShortcut(QKeySequence("Q"), self)
+        # W key for start timestamp
+        self.start_shortcut = QShortcut(QKeySequence("W"), self)
         self.start_shortcut.activated.connect(self.save_start_timestamp)
         
-        # [ key for end timestamp
-        self.end_shortcut = QShortcut(QKeySequence("["), self)
+        # T key for end timestamp
+        self.end_shortcut = QShortcut(QKeySequence("T"), self)
         self.end_shortcut.activated.connect(self.save_end_timestamp)
         
-        # W, E, R, T, Y, U, I, P keys for 8 splits
-        split_keys = ['W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P']
+        # E, S, D, F, G, X, C, V, B keys for 9 splits
+        split_keys = ['E', 'S', 'D', 'F', 'G', 'X', 'C', 'V', 'B']
         self.split_shortcuts = []
         for i, key in enumerate(split_keys):
             shortcut = QShortcut(QKeySequence(key), self)
             shortcut.activated.connect(lambda idx=i: self.save_split_timestamp(idx))
             self.split_shortcuts.append(shortcut)
+        
+        # R key for -150ms button
+        self.minus_150_shortcut = QShortcut(QKeySequence("R"), self)
+        self.minus_150_shortcut.activated.connect(self.subtract_150ms_from_start)
         
         # Space for play/pause
         self.play_shortcut = QShortcut(QKeySequence("Space"), self)
@@ -586,6 +592,14 @@ class VideoPlayer(QMainWindow):
     def slider_pressed(self):
         """Handle slider press - pause updates"""
         self.timer.stop()
+    
+    def slider_moved(self, value):
+        """Handle slider movement - update time label preview"""
+        duration = self.media_player.get_length()
+        if duration > 0:
+            position = value / 1000.0
+            preview_time_ms = int(duration * position)
+            self.current_time_label.setText(self.format_timestamp(preview_time_ms))
         
     def slider_released(self):
         """Handle slider release - seek and resume updates"""
@@ -609,9 +623,28 @@ class VideoPlayer(QMainWindow):
     def on_split_absolute_time_edited(self, idx, text):
         """Handle manual edit of split absolute time"""
         try:
+            # If field is empty or cleared, reset the split
+            if not text or text.strip() == "":
+                self.split_timestamps[idx] = None
+                self.split_time_inputs[idx].blockSignals(True)
+                self.split_time_inputs[idx].setText("00:00:00.000")
+                self.split_time_inputs[idx].setStyleSheet("color: orange; font-size: 9pt;")
+                self.split_time_inputs[idx].blockSignals(False)
+                self.split_relative_inputs[idx].blockSignals(True)
+                self.split_relative_inputs[idx].setText("0.000")
+                self.split_relative_inputs[idx].blockSignals(False)
+                # If this was split 0 (reference), update all relative times
+                if idx == 0:
+                    self.update_all_relative_times()
+                return
+            
             ms = self.timestamp_to_ms(text)
             if ms == 0:
                 self.split_timestamps[idx] = None
+                self.split_time_inputs[idx].blockSignals(True)
+                self.split_time_inputs[idx].setText("00:00:00.000")
+                self.split_time_inputs[idx].setStyleSheet("color: orange; font-size: 9pt;")
+                self.split_time_inputs[idx].blockSignals(False)
                 self.split_relative_inputs[idx].blockSignals(True)
                 self.split_relative_inputs[idx].setText("0.000")
                 self.split_relative_inputs[idx].blockSignals(False)
@@ -639,6 +672,18 @@ class VideoPlayer(QMainWindow):
     def on_split_relative_time_edited(self, idx, text):
         """Handle manual edit of split relative time (relative to split 1)"""
         try:
+            # If field is empty or cleared, reset the split
+            if not text or text.strip() == "":
+                self.split_timestamps[idx] = None
+                self.split_time_inputs[idx].blockSignals(True)
+                self.split_time_inputs[idx].setText("00:00:00.000")
+                self.split_time_inputs[idx].setStyleSheet("color: orange; font-size: 9pt;")
+                self.split_time_inputs[idx].blockSignals(False)
+                self.split_relative_inputs[idx].blockSignals(True)
+                self.split_relative_inputs[idx].setText("0.000")
+                self.split_relative_inputs[idx].blockSignals(False)
+                return
+            
             if idx == 0:
                 # Split 1 relative is always 0.000, editing it would change absolute time
                 # For now, we'll just ignore edits to split 1's relative field
@@ -646,6 +691,15 @@ class VideoPlayer(QMainWindow):
             
             # Parse the seconds value (format: "00.000")
             relative_sec = float(text.strip())
+            
+            # Check if value is 0, reset the split
+            if relative_sec == 0:
+                self.split_timestamps[idx] = None
+                self.split_time_inputs[idx].blockSignals(True)
+                self.split_time_inputs[idx].setText("00:00:00.000")
+                self.split_time_inputs[idx].setStyleSheet("color: orange; font-size: 9pt;")
+                self.split_time_inputs[idx].blockSignals(False)
+                return
             
             # Calculate absolute time based on split 1
             if self.split_timestamps[0] is not None:
