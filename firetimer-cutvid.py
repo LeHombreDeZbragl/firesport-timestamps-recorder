@@ -81,6 +81,10 @@ def validate_timestamps_file(path):
     warnings = []
     line_number = 0
     
+    def is_empty_or_zero(ts):
+        """Check if timestamp is empty or zero (00:00:00.000)"""
+        return not ts or ts == "00:00:00.000"
+    
     with open(path, "r", encoding="utf-8") as f:
         for ln in f:
             line_number += 1
@@ -109,24 +113,83 @@ def validate_timestamps_file(path):
             split_pp = parts[10].strip()
             konec = parts[11].strip()
             
+            title_info = f" (title: {title})" if title else ""
+            
             # Check if title (parts[0]) is empty
             if not title:
                 warnings.append(f"Line {line_number}: is missing a title")
             
-            # Check if začátek (parts[1]) is empty
-            if not zacatek:
-                title_info = f" (title: {title})" if title else ""
-                warnings.append(f"Line {line_number}: is missing the timestamp začátek {title_info}")
+            # Check if required timestamps are empty or zero
+            if is_empty_or_zero(zacatek):
+                warnings.append(f"Line {line_number}: začátek is missing or zero{title_info}")
             
-            # Check if start (parts[2]) is empty
-            if not split_start:
-                title_info = f" (title: {title})" if title else ""
-                warnings.append(f"Line {line_number}: is missing the timestamp start {title_info}")
+            if is_empty_or_zero(split_start):
+                warnings.append(f"Line {line_number}: start is missing or zero{title_info}")
             
-            # Check if konec (parts[11]) is empty
-            if not konec:
-                title_info = f" (title: {title})" if title else ""
-                warnings.append(f"Line {line_number}: is missing the timestamp konec {title_info}")
+            if is_empty_or_zero(konec):
+                warnings.append(f"Line {line_number}: konec is missing or zero{title_info}")
+            
+            # Validate timestamp ordering (only if all required timestamps are present)
+            if not is_empty_or_zero(zacatek) and not is_empty_or_zero(split_start) and not is_empty_or_zero(konec):
+                try:
+                    # Convert timestamps to seconds for comparison
+                    ts_zacatek = timestamp_to_seconds(zacatek)
+                    ts_start = timestamp_to_seconds(split_start)
+                    ts_kos = timestamp_to_seconds(split_kos) if not is_empty_or_zero(split_kos) else None
+                    ts_voda = timestamp_to_seconds(split_voda) if not is_empty_or_zero(split_voda) else None
+                    ts_kohout = timestamp_to_seconds(split_kohout) if not is_empty_or_zero(split_kohout) else None
+                    ts_rozdelovac = timestamp_to_seconds(split_rozdelovac) if not is_empty_or_zero(split_rozdelovac) else None
+                    ts_vystrik_lp = timestamp_to_seconds(split_vystrik_lp) if not is_empty_or_zero(split_vystrik_lp) else None
+                    ts_vystrik_pp = timestamp_to_seconds(split_vystrik_pp) if not is_empty_or_zero(split_vystrik_pp) else None
+                    ts_lp = timestamp_to_seconds(split_lp) if not is_empty_or_zero(split_lp) else None
+                    ts_pp = timestamp_to_seconds(split_pp) if not is_empty_or_zero(split_pp) else None
+                    ts_konec = timestamp_to_seconds(konec)
+                    
+                    # Rule 1: začátek must be the lowest
+                    if ts_start <= ts_zacatek:
+                        warnings.append(f"Line {line_number}: start must be greater than začátek{title_info}")
+                    
+                    # Rule 2: start < koš (if koš exists)
+                    if ts_kos is not None and ts_kos <= ts_start:
+                        warnings.append(f"Line {line_number}: koš must be greater than start{title_info}")
+                    
+                    # Rule 3: koš < voda (if both exist)
+                    if ts_kos is not None and ts_voda is not None and ts_voda <= ts_kos:
+                        warnings.append(f"Line {line_number}: voda must be greater than koš{title_info}")
+                    
+                    # Rule 4: voda < kohout (if both exist)
+                    if ts_voda is not None and ts_kohout is not None and ts_kohout <= ts_voda:
+                        warnings.append(f"Line {line_number}: kohout must be greater than voda{title_info}")
+                    
+                    # Rule 5: kohout < rozdělovač (if both exist)
+                    if ts_kohout is not None and ts_rozdelovac is not None and ts_rozdelovac <= ts_kohout:
+                        warnings.append(f"Line {line_number}: rozdělovač must be greater than kohout{title_info}")
+                    
+                    # Rule 6: rozdělovač < výstřik_LP (if both exist)
+                    if ts_rozdelovac is not None and ts_vystrik_lp is not None and ts_vystrik_lp <= ts_rozdelovac:
+                        warnings.append(f"Line {line_number}: výstřik_LP must be greater than rozdělovač{title_info}")
+                    
+                    # Rule 7: rozdělovač < výstřik_PP (if both exist)
+                    if ts_rozdelovac is not None and ts_vystrik_pp is not None and ts_vystrik_pp <= ts_rozdelovac:
+                        warnings.append(f"Line {line_number}: výstřik_PP must be greater than rozdělovač{title_info}")
+                    
+                    # Rule 8: výstřik_LP < LP (if both exist)
+                    if ts_vystrik_lp is not None and ts_lp is not None and ts_lp <= ts_vystrik_lp:
+                        warnings.append(f"Line {line_number}: LP must be greater than výstřik_LP{title_info}")
+                    
+                    # Rule 9: výstřik_PP < PP (if both exist)
+                    if ts_vystrik_pp is not None and ts_pp is not None and ts_pp <= ts_vystrik_pp:
+                        warnings.append(f"Line {line_number}: PP must be greater than výstřik_PP{title_info}")
+                    
+                    # Rule 10: konec must be the biggest
+                    all_timestamps = [ts for ts in [ts_zacatek, ts_start, ts_kos, ts_voda, ts_kohout, 
+                                                     ts_rozdelovac, ts_vystrik_lp, ts_vystrik_pp, 
+                                                     ts_lp, ts_pp] if ts is not None]
+                    if all_timestamps and ts_konec <= max(all_timestamps):
+                        warnings.append(f"Line {line_number}: konec must be greater than all other timestamps{title_info}")
+                    
+                except Exception as e:
+                    warnings.append(f"Line {line_number}: Error validating timestamp order: {e}{title_info}")
     
     is_valid = len(warnings) == 0
     return is_valid, warnings
@@ -486,9 +549,9 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                 elif pp_appears_at is not None:
                     top_splits_appear_at = pp_appears_at
                 else:
-                    # Both are missing, show NP 4 seconds before the end (or at timer_offset if video is too short)
-                    if duration > 4:
-                        top_splits_appear_at = duration - 4
+                    # Both are missing, show NP 5 seconds before the end (or at timer_offset if video is too short)
+                    if duration > 5:
+                        top_splits_appear_at = duration - 5
                     else:
                         top_splits_appear_at = timer_offset
                 
@@ -767,65 +830,60 @@ Examples:
             """Calculate the final time for sorting (max of LP and PP relative to start)
             Returns (is_valid, final_time) where is_valid indicates if all required splits exist
             """
-            if len(seg_data) == 3:
-                # Old format without splits - invalid for competition
+            title, start, end, splits = seg_data
+            
+            # Check if title indicates NP (e.g., "n na PP", "n na LP", or starts with "NP")
+            title_lower = title.lower().strip()
+            if title_lower.startswith('n na ') or title_lower.startswith('np'):
                 return (False, float('inf'))
-            else:
-                # New format with splits
-                title, start, end, splits = seg_data
+            
+            if not splits or 'start' not in splits or not splits['start'].strip():
+                # Missing start split - invalid
+                return (False, float('inf'))
+            
+            try:
+                start_split_seconds = timestamp_to_seconds(splits['start'].strip())
                 
-                # Check if title indicates NP (e.g., "n na PP", "n na LP", or starts with "NP")
-                title_lower = title.lower().strip()
-                if title_lower.startswith('n na ') or title_lower.startswith('np'):
+                lp_seconds = 0
+                pp_seconds = 0
+                lp_valid = False
+                pp_valid = False
+                
+                if 'LP' in splits and splits['LP'].strip():
+                    try:
+                        lp_timestamp = splits['LP'].strip()
+                        # Check if it's not zero
+                        if lp_timestamp != "00:00:00.000":
+                            lp_seconds = timestamp_to_seconds(lp_timestamp)
+                            lp_valid = True
+                    except:
+                        pass
+                
+                if 'PP' in splits and splits['PP'].strip():
+                    try:
+                        pp_timestamp = splits['PP'].strip()
+                        # Check if it's not zero
+                        if pp_timestamp != "00:00:00.000":
+                            pp_seconds = timestamp_to_seconds(pp_timestamp)
+                            pp_valid = True
+                    except:
+                        pass
+                
+                # If both LP and PP are missing or zero - invalid
+                # OR if only one is valid (one pipe only) - also invalid
+                if not lp_valid and not pp_valid:
                     return (False, float('inf'))
                 
-                if not splits or 'start' not in splits or not splits['start'].strip():
-                    # Missing start split - invalid
+                # If only one pipe has a valid time, treat as invalid (NP)
+                if lp_valid != pp_valid:  # XOR: one is valid, the other is not
                     return (False, float('inf'))
                 
-                try:
-                    start_split_seconds = timestamp_to_seconds(splits['start'].strip())
-                    
-                    lp_seconds = 0
-                    pp_seconds = 0
-                    lp_valid = False
-                    pp_valid = False
-                    
-                    if 'LP' in splits and splits['LP'].strip():
-                        try:
-                            lp_timestamp = splits['LP'].strip()
-                            # Check if it's not zero
-                            if lp_timestamp != "00:00:00.000":
-                                lp_seconds = timestamp_to_seconds(lp_timestamp)
-                                lp_valid = True
-                        except:
-                            pass
-                    
-                    if 'PP' in splits and splits['PP'].strip():
-                        try:
-                            pp_timestamp = splits['PP'].strip()
-                            # Check if it's not zero
-                            if pp_timestamp != "00:00:00.000":
-                                pp_seconds = timestamp_to_seconds(pp_timestamp)
-                                pp_valid = True
-                        except:
-                            pass
-                    
-                    # If both LP and PP are missing or zero - invalid
-                    # OR if only one is valid (one pipe only) - also invalid
-                    if not lp_valid and not pp_valid:
-                        return (False, float('inf'))
-                    
-                    # If only one pipe has a valid time, treat as invalid (NP)
-                    if lp_valid != pp_valid:  # XOR: one is valid, the other is not
-                        return (False, float('inf'))
-                    
-                    # Both pipes have valid times - valid placement
-                    # Return the relative time of max(LP, PP) from start
-                    max_split = max(lp_seconds, pp_seconds)
-                    return (True, max_split - start_split_seconds)
-                except:
-                    return (False, float('inf'))
+                # Both pipes have valid times - valid placement
+                # Return the relative time of max(LP, PP) from start
+                max_split = max(lp_seconds, pp_seconds)
+                return (True, max_split - start_split_seconds)
+            except:
+                return (False, float('inf'))
         
         # Sort segments by final time (lowest to highest), invalid ones go last
         segments_sorted = sorted(segments, key=get_final_time)
@@ -844,18 +902,13 @@ Examples:
     invalid_counter = 999  # Counter for invalid segments (counts down from 999)
     
     for i, seg_data in enumerate(segments_sorted):
-        # Unpack based on tuple length (old format: 3, new format: 4)
-        if len(seg_data) == 3:
-            title, start, end = seg_data
-            splits = None
-            is_valid = False
+        title, start, end, splits = seg_data
+        
+        # Check if segment has valid splits for placement
+        if args.z:
+            is_valid, _ = get_final_time(seg_data)
         else:
-            title, start, end, splits = seg_data
-            # Check if segment has valid splits for placement
-            if args.z:
-                is_valid, _ = get_final_time(seg_data)
-            else:
-                is_valid = True  # All segments are valid when not sorting
+            is_valid = True  # All segments are valid when not sorting
         
         # Determine label and order prefix based on -z flag and validity
         if args.z:
@@ -870,6 +923,7 @@ Examples:
         else:
             # Without -z, show attack number (in original order)
             label = f"{i + 1}.útok"
+            order_prefix = i + 1
             order_prefix = i + 1
         
         part = cut_and_label_segment(args.source, title, start, end, i, parts_dir, splits, label, order_prefix)
