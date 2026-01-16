@@ -3,8 +3,7 @@
 video_timestamp_recorder.py - GUI application for marking video timestamps with splits
 
 Description:
-  A video-only player for recording timestamped segments with frame-by-frame precision and split points.
-  Audio is disabled for better performance and stability.
+  A video player for recording timestamped segments with frame-by-frame precision and split points.
   
 Usage:
   python3 video_timestamp_recorder.py
@@ -54,7 +53,7 @@ Requirements:
   - VLC media player installed on system
 
 Features:
-  - Video-only playback (audio disabled for stability)
+  - Video playback with audio
   - Frame-by-frame precision navigation
   - 9 split points per segment (Czech labels)
   - Live segment editing with editable timestamps
@@ -79,17 +78,23 @@ import vlc
 class VideoPlayer(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Video Timestamp Recorder (Video Only)")
+        self.setWindowTitle("Video Timestamp Recorder")
         self.setGeometry(100, 100, 1400, 800)
         
-        # Video player variables - video only, no audio
+        # Video player variables
         vlc_args = [
-            '--quiet',           # Reduce verbose output
-            '--no-audio',        # Disable all audio
-            '--aout=dummy',      # Use dummy audio output
-            '--no-spu',          # Disable subtitles
-            '--video-on-top',    # Keep video window on top when focused
-            '--no-osd'           # Disable on-screen display
+            '--quiet',                          # Reduce verbose output
+            '--no-spu',                         # Disable subtitles
+            '--video-on-top',                   # Keep video window on top when focused
+            '--no-osd',                         # Disable on-screen display
+            '--audio-time-stretch',             # Enable audio time stretching for better sync
+            '--avcodec-fast',                   # Use faster decoding
+            '--network-caching=1000',           # Network cache in ms
+            '--file-caching=300',               # File cache in ms (lower = less latency)
+            '--live-caching=300',               # Live cache in ms
+            '--clock-jitter=0',                 # No clock jitter
+            '--clock-synchro=0',                # Disable clock synchronization adjustments
+            '--audio-desync=0'                  # No audio desynchronization
         ]
         
         try:
@@ -424,13 +429,7 @@ class VideoPlayer(QMainWindow):
             self.current_video_path = file_path
             media = self.instance.media_new(file_path)
             
-            # Explicitly disable audio for this media
-            media.add_option(':no-audio')
-            
             self.media_player.set_media(media)
-            
-            # Ensure audio is muted at player level
-            self.media_player.audio_set_mute(True)
             
             # Enable controls
             self.play_pause_button.setEnabled(True)
@@ -729,7 +728,7 @@ class VideoPlayer(QMainWindow):
         self.split_relative_inputs[0].blockSignals(False)
         
         # Calculate others relative to split 1
-        for idx in range(1, 8):
+        for idx in range(1, 9):
             if self.split_timestamps[idx] is not None:
                 relative_ms = self.split_timestamps[idx] - self.split_timestamps[0]
                 relative_sec = relative_ms / 1000.0
@@ -1039,10 +1038,10 @@ class VideoPlayer(QMainWindow):
 
     def closeEvent(self, event):
         """Handle application close event for cleanup."""
-        if self.media_player:
+        if hasattr(self, 'media_player') and self.media_player:
             self.media_player.stop()
             self.media_player.release()
-        if self.instance:
+        if hasattr(self, 'instance') and self.instance:
             self.instance.release()
         event.accept()
 

@@ -392,15 +392,15 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     step = 3  # Height of each box layer in pixels
     
     for i in range(0, bar_height, step):
-        # Calculate opacity: starts at 0.7 at top, goes to 1 at bottom
+        # Calculate opacity: starts at 0.1 at top, goes to 1 at bottom
         # Linear interpolation: opacity = min_opacity + (max_opacity - min_opacity) * progress
         progress = i / bar_height  # 0.0 at top, 1.0 at bottom
-        opacity = 0.7 + (1.0 - 0.7) * progress
+        opacity = 0.1 + (1.0 - 0.1) * progress
         
         # Y position: starts from top of bar (ih-140) and goes down
         y_pos = f"ih-{bar_height - i}"
         
-        filters.append(f"drawbox=x=0:y={y_pos}:w=iw:h={step}:color=0x848484@{opacity:.3f}:t=fill")
+        filters.append(f"drawbox=x=0:y={y_pos}:w=iw:h={step}:color=0x828082@{opacity:.3f}:t=fill")
     
     # Title overlay (bottom left, smaller font, at the very bottom)
     # Label is now to the right of the title on the same line
