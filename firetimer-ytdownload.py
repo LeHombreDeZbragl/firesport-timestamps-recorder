@@ -46,6 +46,7 @@ Features:
   - Supports downloading specific time ranges from videos
 """
 import argparse
+import math
 import os
 import sys
 import subprocess
@@ -147,7 +148,7 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=120, 
     print(f"📦 Downloading {chunk_minutes}-minute chunks directly")
     
     chunk_duration_seconds = chunk_minutes * 60
-    num_chunks = int(download_duration / chunk_duration_seconds) + 1
+    num_chunks = math.ceil(download_duration / chunk_duration_seconds)
     
     base_name = os.path.splitext(video_name)[0] if video_name.endswith('.mp4') else video_name
     downloaded_parts = []
@@ -173,12 +174,20 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=120, 
             # Download chunk directly using ffmpeg with the video URL
             cmd = [
                 "ffmpeg",
-                "-ss", str(chunk_start),  # Seek to start time
+                "-hide_banner",
+                "-loglevel", "error",
                 "-i", video_url,          # Input from YouTube URL
+                "-ss", str(chunk_start),  # Accurate seek after input
                 "-t", str(chunk_end - chunk_start),  # Duration of chunk
-                "-c", "copy",             # Copy streams (no re-encoding)
+                "-map", "0:v:0?",
+                "-map", "0:a:0?",
+                "-c:v", "libx264",       # Re-encode video to create a fresh keyframe at cut
+                "-preset", "veryfast",
+                "-crf", "18",
+                "-c:a", "copy",
+                "-movflags", "+faststart",
                 "-avoid_negative_ts", "make_zero",
-                "-f", "mp4",              # Output format
+                "-fflags", "+genpts",
                 "-y", part_path           # Output file
             ]
             
@@ -216,12 +225,21 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=120, 
                     
                     trim_cmd = [
                         "ffmpeg",
-                        "-ss", str(chunk_start),
+                        "-hide_banner",
+                        "-loglevel", "error",
+                        "-fflags", "+genpts",
                         "-i", temp_path,
+                        "-ss", str(chunk_start),  # seek after input for frame-accurate cut
                         "-t", str(chunk_end - chunk_start),
-                        "-c", "copy",
-                        "-reset_timestamps", "1",  # normalize timestamps per part to avoid DTS issues
+                        "-map", "0:v:0?",
+                        "-map", "0:a:0?",
+                        "-c:v", "libx264",  # Re-encode video boundary to avoid missing keyframes
+                        "-preset", "veryfast",
+                        "-crf", "18",
+                        "-c:a", "copy",
+                        "-movflags", "+faststart",
                         "-avoid_negative_ts", "make_zero",
+                        "-reset_timestamps", "1",
                         "-y", part_path
                     ]
                     subprocess.run(trim_cmd, capture_output=True)
