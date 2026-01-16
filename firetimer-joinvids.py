@@ -65,8 +65,36 @@ def collect_videos(folder):
         sys.exit(1)
     return vids
 
+def normalize_videos(video_list):
+    normalized = []
+    temps = []
+    for v in video_list:
+        temp = v + ".norm.mp4"
+        cmd = [
+            "ffmpeg",
+            "-fflags", "+genpts",
+            "-i", v,
+            "-map", "0",
+            "-c", "copy",
+            "-reset_timestamps", "1",
+            "-avoid_negative_ts", "make_zero",
+            "-max_interleave_delta", "0",
+            "-y", temp
+        ]
+        print(f"🧹 Normalizing timestamps: {os.path.basename(v)}")
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            normalized.append(temp)
+            temps.append(temp)
+        except subprocess.CalledProcessError:
+            if os.path.exists(temp):
+                os.remove(temp)
+            raise
+    return normalized, temps
+
 def join_videos(video_list, output_file="output.mp4"):
     temp_list = "_firejoiner_list.txt"
+    normalized_videos, temp_artifacts = normalize_videos(video_list)
     
     # Ensure output directory exists
     output_dir = os.path.dirname(os.path.abspath(output_file))
@@ -74,7 +102,7 @@ def join_videos(video_list, output_file="output.mp4"):
         os.makedirs(output_dir, exist_ok=True)
     
     with open(temp_list, "w", encoding="utf-8") as f:
-        for v in video_list:
+        for v in normalized_videos:
             f.write(f"file '{os.path.abspath(v)}'\n")
     
     print(f"🔗 Joining {len(video_list)} parts...")
@@ -82,21 +110,29 @@ def join_videos(video_list, output_file="output.mp4"):
     print(f"📝 Output path: {output_path}")
     
     cmd = [
-        "ffmpeg", "-f", "concat", "-safe", "0",
+        "ffmpeg",
+        "-fflags", "+genpts",  # regenerate timestamps to keep DTS monotonic
+        "-f", "concat", "-safe", "0",
         "-i", temp_list,
         "-c", "copy",  # Copy streams without re-encoding (much faster!)
+        "-avoid_negative_ts", "make_zero",
+        "-max_interleave_delta", "0",
         "-y", output_path
     ]
     
     try:
         subprocess.run(cmd, check=True)
-        os.remove(temp_list)
         print(f"✅ Final video saved as: {output_path}")
     except subprocess.CalledProcessError as e:
-        os.remove(temp_list)
         print(f"❌ FFmpeg error: {e}")
         print(f"💡 Try checking if the output directory is writable: {output_dir}")
         raise
+    finally:
+        if os.path.exists(temp_list):
+            os.remove(temp_list)
+        for t in temp_artifacts:
+            if os.path.exists(t):
+                os.remove(t)
 
 def main():
     parser = argparse.ArgumentParser(

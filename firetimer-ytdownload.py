@@ -113,31 +113,14 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=120, 
         duration = info.get('duration', 0)
         title = info.get('title', 'video')
         
-        # Get the best format URL for direct streaming
-        formats = info.get('formats', [])
-        best_format = None
-        for fmt in reversed(formats):  # Start from best quality
-            if (fmt.get('vcodec') != 'none' and fmt.get('acodec') != 'none' and 
-                fmt.get('height', 0) <= 1080):
-                best_format = fmt
-                break
-        
-        if not best_format:
-            # Fallback to any format with both video and audio
-            for fmt in formats:
-                if fmt.get('vcodec') != 'none' and fmt.get('acodec') != 'none':
-                    best_format = fmt
-                    break
+        # Note: We skip direct streaming for now since high-quality formats
+        # on YouTube separate video and audio, and yt-dlp handles merging better
+        best_format = None  # Force using yt-dlp fallback for proper format merging
+        video_url = None
     
     if duration == 0:
         print("❌ Could not determine video duration")
         return []
-        
-    if not best_format or not best_format.get('url'):
-        print("❌ Could not find suitable video format")
-        return []
-    
-    video_url = best_format['url']
     
     # Parse start and end times
     start_seconds = parse_time_to_seconds(start_time) if start_time else 0
@@ -184,71 +167,78 @@ def download_video_in_chunks(url, output_folder, video_name, chunk_minutes=120, 
 
         segment_start_time = time.time()
 
-        # Download chunk directly using ffmpeg with the video URL
-        # This is the most reliable method - stream from URL and copy exact time range
-        cmd = [
-            "ffmpeg",
-            "-ss", str(chunk_start),  # Seek to start time
-            "-i", video_url,          # Input from YouTube URL
-            "-t", str(chunk_end - chunk_start),  # Duration of chunk
-            "-c", "copy",             # Copy streams (no re-encoding)
-            "-avoid_negative_ts", "make_zero",
-            "-f", "mp4",              # Output format
-            "-y", part_path           # Output file
-        ]
+        # Try direct streaming first if video_url is available
+        success = False
+        if video_url:
+            # Download chunk directly using ffmpeg with the video URL
+            cmd = [
+                "ffmpeg",
+                "-ss", str(chunk_start),  # Seek to start time
+                "-i", video_url,          # Input from YouTube URL
+                "-t", str(chunk_end - chunk_start),  # Duration of chunk
+                "-c", "copy",             # Copy streams (no re-encoding)
+                "-avoid_negative_ts", "make_zero",
+                "-f", "mp4",              # Output format
+                "-y", part_path           # Output file
+            ]
+            
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode == 0 and os.path.exists(part_path):
+                    downloaded_parts.append(part_path)
+                    size_mb = os.path.getsize(part_path) / (1024 * 1024)
+                    print(f"    ✅ Downloaded: {size_mb:.1f}MB")
+                    success = True
+            except Exception as e:
+                print(f"    ❌ Direct streaming error: {e}")
         
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode == 0 and os.path.exists(part_path):
-                downloaded_parts.append(part_path)
-                size_mb = os.path.getsize(part_path) / (1024 * 1024)
-                print(f"    ✅ Downloaded: {size_mb:.1f}MB")
-            else:
+        # If direct streaming not available or failed, use yt-dlp
+        if not success:
+            if video_url:
                 print(f"    ❌ Failed to download part")
-                # If direct streaming fails, fall back to yt-dlp for this chunk
                 print(f"    🔄 Trying fallback method...")
-                try:
-                    fallback_opts = {
-                        "outtmpl": part_path,
-                        "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-                        "merge_output_format": "mp4",
-                        "quiet": True,
-                    }
-                    with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                        ydl.download([url])
+            else:
+                print(f"    🔄 Using yt-dlp for high-quality download...")
+            try:
+                fallback_opts = {
+                    "outtmpl": part_path,
+                    "format": "bestvideo[height<=1080][fps<=60]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+                    "merge_output_format": "mp4",
+                    "quiet": True,
+                }
+                with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                    ydl.download([url])
+                
+                if os.path.exists(part_path):
+                    # Trim the downloaded file to the correct time range
+                    temp_path = part_path + ".temp.mp4"
+                    os.rename(part_path, temp_path)
+                    
+                    trim_cmd = [
+                        "ffmpeg",
+                        "-ss", str(chunk_start),
+                        "-i", temp_path,
+                        "-t", str(chunk_end - chunk_start),
+                        "-c", "copy",
+                        "-reset_timestamps", "1",  # normalize timestamps per part to avoid DTS issues
+                        "-avoid_negative_ts", "make_zero",
+                        "-y", part_path
+                    ]
+                    subprocess.run(trim_cmd, capture_output=True)
+                    
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
                     
                     if os.path.exists(part_path):
-                        # Trim the downloaded file to the correct time range
-                        temp_path = part_path + ".temp.mp4"
-                        os.rename(part_path, temp_path)
-                        
-                        trim_cmd = [
-                            "ffmpeg",
-                            "-ss", str(chunk_start),
-                            "-i", temp_path,
-                            "-t", str(chunk_end - chunk_start),
-                            "-c", "copy",
-                            "-y", part_path
-                        ]
-                        subprocess.run(trim_cmd, capture_output=True)
-                        
-                        if os.path.exists(temp_path):
-                            os.remove(temp_path)
-                        
-                        if os.path.exists(part_path):
-                            downloaded_parts.append(part_path)
-                            size_mb = os.path.getsize(part_path) / (1024 * 1024)
-                            print(f"    ✅ Fallback success: {size_mb:.1f}MB")
-                        else:
-                            print(f"    ❌ Fallback also failed")
+                        downloaded_parts.append(part_path)
+                        size_mb = os.path.getsize(part_path) / (1024 * 1024)
+                        print(f"    ✅ Success: {size_mb:.1f}MB")
                     else:
-                        print(f"    ❌ Fallback download failed")
-                except Exception as fe:
-                    print(f"    ❌ Fallback error: {fe}")
-                
-        except Exception as e:
-            print(f"    ❌ Error downloading part {i+1}: {e}")
-            continue
+                        print(f"    ❌ Trimming failed")
+                else:
+                    print(f"    ❌ Download failed")
+            except Exception as fe:
+                print(f"    ❌ Error: {fe}")
 
         segment_end_time = time.time()
         segment_duration = segment_end_time - segment_start_time
@@ -271,7 +261,7 @@ def download_video_full(url, output_folder, video_name):
     
     ydl_opts = {
         "outtmpl": output_path,
-        "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+        "format": "bestvideo[height<=1080][fps<=60]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
         "merge_output_format": "mp4",
         "postprocessors": [{
             'key': 'FFmpegVideoConvertor',
@@ -301,9 +291,13 @@ def join_videos(video_list, output_file="output.mp4"):
     output_path = os.path.abspath(output_file)
     
     cmd = [
-        "ffmpeg", "-f", "concat", "-safe", "0",
+        "ffmpeg",
+        "-fflags", "+genpts",  # regenerate timestamps to keep DTS monotonic
+        "-f", "concat", "-safe", "0",
         "-i", temp_list,
         "-c", "copy",  # Copy streams without re-encoding (much faster!)
+        "-avoid_negative_ts", "make_zero",
+        "-max_interleave_delta", "0",
         "-y", output_path
     ]
     
@@ -368,14 +362,22 @@ Output: Downloads to <folder>/in-parts/ directory, joins into final video in <fo
         final_name = args.name if args.name.endswith('.mp4') else f"{args.name}.mp4"
         final_path = os.path.join(args.folder, final_name)
         
-        print(f"\n🔗 Creating final joined video...")
+        print(f"\n🔗 Creating final joined video via join script...")
+        join_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "firetimer-joinvids.py")
+        join_cmd = [
+            sys.executable,
+            join_script,
+            "-f", os.path.join(args.folder, "in-parts"),
+            "-O", final_name,
+        ]
         try:
-            join_videos(parts, final_path)
+            subprocess.run(join_cmd, check=True)
             final_size = os.path.getsize(final_path) / (1024 * 1024)
             print(f"🎬 Final video: {final_name} ({final_size:.1f}MB)")
             print(f"📁 Parts saved in: {os.path.join(args.folder, 'in-parts')}")
         except Exception as e:
             print(f"❌ Failed to join videos: {e}")
+            print(f"   Tried command: {' '.join(join_cmd)}")
     else:
         print("❌ Download failed")
 
