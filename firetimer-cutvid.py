@@ -791,7 +791,7 @@ Examples:
         """
     )
     parser.add_argument("--source", "-s", required=True, help="Video source: local MP4 file path")
-    parser.add_argument("--times", "-t", required=True, help="Timestamps file")
+    parser.add_argument("--times", "-t", required=True, nargs="+", help="Timestamps file(s) - can specify multiple files")
     parser.add_argument("-z", action="store_true", help="Sort by final time (max of LP/PP) and add placement labels (1.místo, 2.místo, etc.)")
     args = parser.parse_args()
 
@@ -802,164 +802,250 @@ Examples:
         print(f"ERROR: source file does not exist: {args.source}")
         sys.exit(1)
 
-    # Create out-parts directory based on video location
-    parts_dir = prepare_parts_dir(args.source)
-    print(f"📁 Cut videos will be saved to: {parts_dir}")
-
-    # Validate timestamps file first
-    print("🔍 Validating timestamps file...")
-    is_valid, warnings = validate_timestamps_file(args.times)
+    # Handle multiple timestamp files
+    timestamp_files = args.times if isinstance(args.times, list) else [args.times]
+    print(f"📋 Processing {len(timestamp_files)} timestamp file(s)")
     
-    if not is_valid:
-        print("\n⚠️  VALIDATION WARNINGS:")
-        for warning in warnings:
-            print(f"   {warning}")
-        print("\n❌ Validation failed. Please fix the issues in the timestamps file and try again.")
-        sys.exit(1)
+    final_videos = []  # Store paths to final videos from each timestamp file
     
-    print("✅ Validation passed!\n")
+    for file_idx, timestamps_file in enumerate(timestamp_files):
+        print(f"\n{'=' * 80}")
+        print(f"📄 Processing timestamp file {file_idx + 1}/{len(timestamp_files)}: {timestamps_file}")
+        print(f"{'=' * 80}\n")
+        
+        # Create out-parts directory based on video location
+        # If multiple timestamp files, create separate directories
+        if len(timestamp_files) > 1:
+            # Create unique subdirectory for each timestamp file
+            base_parts_dir = prepare_parts_dir(args.source)
+            timestamp_basename = os.path.splitext(os.path.basename(timestamps_file))[0]
+            parts_dir = os.path.join(base_parts_dir, f"batch_{file_idx + 1:02d}_{timestamp_basename}")
+            if not os.path.exists(parts_dir):
+                os.makedirs(parts_dir)
+        else:
+            parts_dir = prepare_parts_dir(args.source)
+        
+        print(f"📁 Cut videos will be saved to: {parts_dir}")
 
-    segments = parse_timestamps_file(args.times)
-    if not segments:
-        print("No valid segments found. Exiting.")
-        sys.exit(1)
+        # Validate timestamps file first
+        print("🔍 Validating timestamps file...")
+        is_valid, warnings = validate_timestamps_file(timestamps_file)
+        
+        if not is_valid:
+            print("\n⚠️  VALIDATION WARNINGS:")
+            for warning in warnings:
+                print(f"   {warning}")
+            print(f"\n⚠️  Skipping {timestamps_file} due to validation errors.")
+            continue
+        
+        print("✅ Validation passed!\n")
 
-    # Sort segments by final time only if -z flag is set
-    if args.z:
-        def get_final_time(seg_data):
-            """Calculate the final time for sorting (max of LP and PP relative to start)
-            Returns (is_valid, final_time) where is_valid indicates if all required splits exist
-            """
+        segments = parse_timestamps_file(timestamps_file)
+        if not segments:
+            print(f"No valid segments found in {timestamps_file}. Skipping.")
+            continue
+
+            # Sort segments by final time only if -z flag is set
+        if args.z:
+            def get_final_time(seg_data):
+                """Calculate the final time for sorting (max of LP and PP relative to start)
+                Returns (is_valid, final_time) where is_valid indicates if all required splits exist
+                """
+                title, start, end, splits = seg_data
+                
+                # Check if title indicates NP (e.g., "n na PP", "n na LP", or starts with "NP")
+                title_lower = title.lower().strip()
+                if title_lower.startswith('n na ') or title_lower.startswith('np'):
+                    return (False, float('inf'))
+                
+                if not splits or 'start' not in splits or not splits['start'].strip():
+                    # Missing start split - invalid
+                    return (False, float('inf'))
+                
+                try:
+                    start_split_seconds = timestamp_to_seconds(splits['start'].strip())
+                    
+                    lp_seconds = 0
+                    pp_seconds = 0
+                    lp_valid = False
+                    pp_valid = False
+                    
+                    if 'LP' in splits and splits['LP'].strip():
+                        try:
+                            lp_timestamp = splits['LP'].strip()
+                            # Check if it's not zero
+                            if lp_timestamp != "00:00:00.000":
+                                lp_seconds = timestamp_to_seconds(lp_timestamp)
+                                lp_valid = True
+                        except:
+                            pass
+                    
+                    if 'PP' in splits and splits['PP'].strip():
+                        try:
+                            pp_timestamp = splits['PP'].strip()
+                            # Check if it's not zero
+                            if pp_timestamp != "00:00:00.000":
+                                pp_seconds = timestamp_to_seconds(pp_timestamp)
+                                pp_valid = True
+                        except:
+                            pass
+                    
+                    # If both LP and PP are missing or zero - invalid
+                    # OR if only one is valid (one pipe only) - also invalid
+                    if not lp_valid and not pp_valid:
+                        return (False, float('inf'))
+                    
+                    # If only one pipe has a valid time, treat as invalid (NP)
+                    if lp_valid != pp_valid:  # XOR: one is valid, the other is not
+                        return (False, float('inf'))
+                    
+                    # Both pipes have valid times - valid placement
+                    # Return the relative time of max(LP, PP) from start
+                    max_split = max(lp_seconds, pp_seconds)
+                    return (True, max_split - start_split_seconds)
+                except:
+                    return (False, float('inf'))
+            
+            # Sort segments by final time (lowest to highest), invalid ones go last
+            segments_sorted = sorted(segments, key=get_final_time)
+            print(f"📊 Sorted {len(segments_sorted)} segments by final time (lowest to highest)")
+            
+            # Count valid segments for placement numbering
+            valid_count = sum(1 for seg in segments_sorted if get_final_time(seg)[0])
+            print(f"   Valid segments: {valid_count}, Invalid (NP): {len(segments_sorted) - valid_count}")
+        else:
+            # No sorting - keep original order from file
+            segments_sorted = segments
+            print(f"📋 Processing {len(segments_sorted)} segments in original order")
+
+        parts = []
+        placement_counter = 1  # Counter for valid placements
+        invalid_counter = 999  # Counter for invalid segments (counts down from 999)
+        
+        for i, seg_data in enumerate(segments_sorted):
             title, start, end, splits = seg_data
             
-            # Check if title indicates NP (e.g., "n na PP", "n na LP", or starts with "NP")
-            title_lower = title.lower().strip()
-            if title_lower.startswith('n na ') or title_lower.startswith('np'):
-                return (False, float('inf'))
-            
-            if not splits or 'start' not in splits or not splits['start'].strip():
-                # Missing start split - invalid
-                return (False, float('inf'))
-            
-            try:
-                start_split_seconds = timestamp_to_seconds(splits['start'].strip())
-                
-                lp_seconds = 0
-                pp_seconds = 0
-                lp_valid = False
-                pp_valid = False
-                
-                if 'LP' in splits and splits['LP'].strip():
-                    try:
-                        lp_timestamp = splits['LP'].strip()
-                        # Check if it's not zero
-                        if lp_timestamp != "00:00:00.000":
-                            lp_seconds = timestamp_to_seconds(lp_timestamp)
-                            lp_valid = True
-                    except:
-                        pass
-                
-                if 'PP' in splits and splits['PP'].strip():
-                    try:
-                        pp_timestamp = splits['PP'].strip()
-                        # Check if it's not zero
-                        if pp_timestamp != "00:00:00.000":
-                            pp_seconds = timestamp_to_seconds(pp_timestamp)
-                            pp_valid = True
-                    except:
-                        pass
-                
-                # If both LP and PP are missing or zero - invalid
-                # OR if only one is valid (one pipe only) - also invalid
-                if not lp_valid and not pp_valid:
-                    return (False, float('inf'))
-                
-                # If only one pipe has a valid time, treat as invalid (NP)
-                if lp_valid != pp_valid:  # XOR: one is valid, the other is not
-                    return (False, float('inf'))
-                
-                # Both pipes have valid times - valid placement
-                # Return the relative time of max(LP, PP) from start
-                max_split = max(lp_seconds, pp_seconds)
-                return (True, max_split - start_split_seconds)
-            except:
-                return (False, float('inf'))
-        
-        # Sort segments by final time (lowest to highest), invalid ones go last
-        segments_sorted = sorted(segments, key=get_final_time)
-        print(f"📊 Sorted {len(segments_sorted)} segments by final time (lowest to highest)")
-        
-        # Count valid segments for placement numbering
-        valid_count = sum(1 for seg in segments_sorted if get_final_time(seg)[0])
-        print(f"   Valid segments: {valid_count}, Invalid (NP): {len(segments_sorted) - valid_count}")
-    else:
-        # No sorting - keep original order from file
-        segments_sorted = segments
-        print(f"📋 Processing {len(segments_sorted)} segments in original order")
-
-    parts = []
-    placement_counter = 1  # Counter for valid placements
-    invalid_counter = 999  # Counter for invalid segments (counts down from 999)
-    
-    for i, seg_data in enumerate(segments_sorted):
-        title, start, end, splits = seg_data
-        
-        # Check if segment has valid splits for placement
-        if args.z:
-            is_valid, _ = get_final_time(seg_data)
-        else:
-            is_valid = True  # All segments are valid when not sorting
-        
-        # Determine label and order prefix based on -z flag and validity
-        if args.z:
-            if is_valid:
-                label = f"{placement_counter}.místo"
-                order_prefix = placement_counter
-                placement_counter += 1
+            # Check if segment has valid splits for placement
+            if args.z:
+                is_valid, _ = get_final_time(seg_data)
             else:
-                label = "NP"
-                order_prefix = invalid_counter
-                invalid_counter -= 1
-        else:
-            # Without -z, show attack number (in original order)
-            label = f"{i + 1}.útok"
-            order_prefix = i + 1
-            order_prefix = i + 1
-        
-        part = cut_and_label_segment(args.source, title, start, end, i, parts_dir, splits, label, order_prefix)
-        parts.append(part)
-
-    # Remove parts.txt file if it exists
-    parts_txt_path = os.path.join(parts_dir, "parts.txt")
-    if os.path.exists(parts_txt_path):
-        os.remove(parts_txt_path)
-        print(f"🗑️  Removed {parts_txt_path}")
-
-    print(f"✅ All {len(parts)} cut videos have been saved to: {parts_dir}")
-    
-    # Automatically call joinvids.py to join the cut parts
-    print("\n🔗 Auto-joining cut parts...")
-    try:
-        joinvids_script = os.path.join(os.path.dirname(__file__), "firetimer-joinvids.py")
-        if not os.path.exists(joinvids_script):
-            print(f"⚠️  Warning: firetimer-joinvids.py not found at {joinvids_script}")
-            print("   You can manually join the parts later.")
-        else:
-            # Run joinvids.py with the parts directory
-            cmd = [sys.executable, joinvids_script, "--parts", parts_dir]
-            print(f"🚀 Running: {' '.join(cmd)}")
-            result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+                is_valid = True  # All segments are valid when not sorting
             
-            if result.returncode == 0:
-                print("✅ Auto-join completed successfully!")
+            # Determine label and order prefix based on -z flag and validity
+            if args.z:
+                if is_valid:
+                    label = f"{placement_counter}.místo"
+                    order_prefix = placement_counter
+                    placement_counter += 1
+                else:
+                    label = "NP"
+                    order_prefix = invalid_counter
+                    invalid_counter -= 1
             else:
-                print(f"⚠️  Auto-join failed with return code {result.returncode}")
-                if result.stderr:
-                    print(f"Error: {result.stderr}")
+                # Without -z, show attack number (in original order)
+                label = f"{i + 1}.útok"
+                order_prefix = i + 1
+            
+            part = cut_and_label_segment(args.source, title, start, end, i, parts_dir, splits, label, order_prefix)
+            parts.append(part)
+
+        # Remove parts.txt file if it exists
+        parts_txt_path = os.path.join(parts_dir, "parts.txt")
+        if os.path.exists(parts_txt_path):
+            os.remove(parts_txt_path)
+            print(f"🗑️  Removed {parts_txt_path}")
+
+        print(f"✅ All {len(parts)} cut videos have been saved to: {parts_dir}")
+        
+        # Automatically call joinvids.py to join the cut parts
+        print("\n🔗 Auto-joining cut parts...")
+        try:
+            joinvids_script = os.path.join(os.path.dirname(__file__), "firetimer-joinvids.py")
+            if not os.path.exists(joinvids_script):
+                print(f"⚠️  Warning: firetimer-joinvids.py not found at {joinvids_script}")
                 print("   You can manually join the parts later.")
-    except Exception as e:
-        print(f"⚠️  Error during auto-join: {e}")
-        print("   You can manually join the parts later.")
+            else:
+                # Run joinvids.py with the parts directory
+                # For multiple timestamp files, specify custom output name to avoid overwriting
+                if len(timestamp_files) > 1:
+                    # Create unique output name for this batch
+                    batch_output_name = f"{os.path.basename(parts_dir)}_final.mp4"
+                    cmd = [sys.executable, joinvids_script, "--parts", parts_dir, "--out", batch_output_name]
+                else:
+                    cmd = [sys.executable, joinvids_script, "--parts", parts_dir]
+                
+                print(f"🚀 Running: {' '.join(cmd)}")
+                result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    print("✅ Auto-join completed successfully!")
+                    # Store the path to the final video
+                    parent_dir = os.path.dirname(parts_dir)
+                    
+                    if len(timestamp_files) > 1:
+                        # For multiple files, use the batch-specific output name
+                        batch_output_name = f"{os.path.basename(parts_dir)}_final.mp4"
+                        final_video_path = os.path.join(parent_dir, batch_output_name)
+                    else:
+                        # For single file, use the default auto-generated name
+                        folder_name = os.path.basename(parent_dir)
+                        final_video_path = os.path.join(parent_dir, f"{folder_name}_final.mp4")
+                    
+                    if os.path.exists(final_video_path):
+                        final_videos.append(final_video_path)
+                        print(f"📹 Saved final video: {final_video_path}")
+                else:
+                    print(f"⚠️  Auto-join failed with return code {result.returncode}")
+                    if result.stderr:
+                        print(f"Error: {result.stderr}")
+                    print("   You can manually join the parts later.")
+        except Exception as e:
+            print(f"⚠️  Error during auto-join: {e}")
+            print("   You can manually join the parts later.")
+    
+    # If multiple timestamp files were processed, stitch all final videos together
+    if len(final_videos) > 1:
+        print(f"\n{'=' * 80}")
+        print(f"🎬 Stitching {len(final_videos)} final videos together...")
+        print(f"{'=' * 80}\n")
+        
+        # Create the ultimate final video path
+        video_dir = os.path.dirname(os.path.abspath(args.source))
+        ultimate_final_path = os.path.join(video_dir, "out-parts", "ultimate_final.mp4")
+        
+        try:
+            # Use join_videos function from joinvids module, but we need to copy the logic
+            # Create temp list file
+            temp_list = "_firetimer_ultimate_list.txt"
+            with open(temp_list, "w", encoding="utf-8") as f:
+                for v in final_videos:
+                    f.write(f"file '{os.path.abspath(v)}'\n")
+            
+            print(f"🔗 Joining {len(final_videos)} final videos...")
+            print(f"📝 Ultimate output path: {ultimate_final_path}")
+            
+            cmd = [
+                "ffmpeg",
+                "-fflags", "+genpts",
+                "-f", "concat", "-safe", "0",
+                "-i", temp_list,
+                "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
+                "-max_interleave_delta", "0",
+                "-y", ultimate_final_path
+            ]
+            
+            subprocess.run(cmd, check=True)
+            print(f"✅ Ultimate final video saved as: {ultimate_final_path}")
+            
+            # Cleanup temp list
+            if os.path.exists(temp_list):
+                os.remove(temp_list)
+        except Exception as e:
+            print(f"⚠️  Error stitching final videos: {e}")
+            print("   You can manually stitch the videos later.")
+    elif len(final_videos) == 1:
+        print(f"\n✅ Single timestamp file processed. Final video: {final_videos[0]}")
 
 if __name__ == "__main__":
     main()

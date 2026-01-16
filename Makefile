@@ -25,15 +25,17 @@ help:
 	@echo ""
 	@echo "  make gui            - Launch GUI timestamp recorder"
 	@echo ""
-	@echo "  make cut SOURCE=<video.mp4> TIMES=<timestamps.txt> [SORT=1]"
+	@echo "  make cut SOURCE=<video.mp4> TIMES='<timestamps.txt>' [SORT=1]"
 	@echo "                      - Cut video by timestamps with overlays"
+	@echo "                      - For multiple files: TIMES='file1.txt file2.txt file3.txt'"
 	@echo ""
 	@echo "  make join FOLDER=<parts-dir> [OUTPUT=<output.mp4>]"
 	@echo "                      - Join video parts into one file"
 	@echo ""
 	@echo "$(BLUE)Examples:$(NC)"
 	@echo "  make download URL='https://youtube.com/watch?v=xyz' NAME=myvideo CHUNK=10"
-	@echo "  make cut SOURCE=extraliga-netin/extraliga-netin.mp4 TIMES=extraliga-netin/timestamps.txt SORT=1"
+	@echo "  make cut SOURCE=extraliga-netin/extraliga-netin.mp4 TIMES='extraliga-netin/timestamps.txt' SORT=1"
+	@echo "  make cut SOURCE=video.mp4 TIMES='timestamps1.txt timestamps2.txt' SORT=1"
 	@echo "  make join FOLDER=extraliga-netin/out-parts"
 	@echo "  make gui"
 	@echo ""
@@ -95,19 +97,21 @@ endif
 cut:
 ifndef SOURCE
 	@echo "$(RED)❌ Error: SOURCE is required$(NC)"
-	@echo "Usage: make cut SOURCE=video.mp4 TIMES=timestamps.txt [SORT=1]"
+	@echo "Usage: make cut SOURCE=video.mp4 TIMES='timestamps.txt' [SORT=1]"
+	@echo "       make cut SOURCE=video.mp4 TIMES='file1.txt file2.txt' [SORT=1]"
 	@exit 1
 endif
 ifndef TIMES
 	@echo "$(RED)❌ Error: TIMES is required$(NC)"
-	@echo "Usage: make cut SOURCE=video.mp4 TIMES=timestamps.txt [SORT=1]"
+	@echo "Usage: make cut SOURCE=video.mp4 TIMES='timestamps.txt' [SORT=1]"
+	@echo "       make cut SOURCE=video.mp4 TIMES='file1.txt file2.txt' [SORT=1]"
 	@exit 1
 endif
 	@echo "$(GREEN)✂️  Cutting video...$(NC)"
 	@if [ -n "$(SORT)" ] && [ "$(SORT)" = "1" ]; then \
-		$(PYTHON) firetimer-cutvid.py -s "$(SOURCE)" -t "$(TIMES)" -z; \
+		$(PYTHON) firetimer-cutvid.py -s "$(SOURCE)" -t $(TIMES) -z; \
 	else \
-		$(PYTHON) firetimer-cutvid.py -s "$(SOURCE)" -t "$(TIMES)"; \
+		$(PYTHON) firetimer-cutvid.py -s "$(SOURCE)" -t $(TIMES); \
 	fi
 
 # Join video parts

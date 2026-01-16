@@ -165,13 +165,11 @@ Examples:
     if args.out:
         output_filename = args.out
     else:
-        folder_name = os.path.basename(os.path.abspath(args.folder))
-        if "out-parts" in folder_name:
-            output_filename = "final_out_video.mp4"
-        elif "in-parts" in folder_name:
-            output_filename = "final_in_video.mp4"
-        else:
-            output_filename = "final_video.mp4"
+        # Get the parent folder name (one level above the parts folder)
+        folder_path = os.path.abspath(args.folder)
+        parent_dir = os.path.dirname(folder_path)
+        parent_folder_name = os.path.basename(parent_dir)
+        output_filename = f"{parent_folder_name}_final.mp4"
         print(f"📝 Auto-generated output filename: {output_filename}")
 
     # Ensure output filename has .mp4 extension
