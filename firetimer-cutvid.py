@@ -71,7 +71,7 @@ def fix_timestamp(ts):
         s = f"{int(s):02d}"
     return f"{int(h):02d}:{int(m):02d}:{s}"
 
-def validate_timestamps_file(path):
+def validate_timestamps_file(path, video_path=None):
     """Validate timestamps file and return list of warnings.
     Returns (is_valid, warnings_list)
     """
@@ -80,6 +80,11 @@ def validate_timestamps_file(path):
     
     warnings = []
     line_number = 0
+    
+    # Get video duration if video_path is provided
+    video_duration = None
+    if video_path:
+        video_duration = get_video_duration(video_path)
     
     def is_empty_or_zero(ts):
         """Check if timestamp is empty or zero (00:00:00.000)"""
@@ -188,6 +193,28 @@ def validate_timestamps_file(path):
                     if all_timestamps and ts_konec <= max(all_timestamps):
                         warnings.append(f"Line {line_number}: konec must be greater than all other timestamps{title_info}")
                     
+                    # Rule 11: Check if timestamps are within video duration
+                    if video_duration is not None:
+                        # Check if konec (end) is beyond video duration
+                        if ts_konec > video_duration:
+                            warnings.append(f"Line {line_number}: konec ({konec}) is beyond video duration ({int(video_duration // 3600):02d}:{int((video_duration % 3600) // 60):02d}:{int(video_duration % 60):02d}){title_info}")
+                        # Check all other timestamps that exist
+                        timestamps_to_check = {
+                            'začátek': ts_zacatek,
+                            'start': ts_start,
+                            'koš': ts_kos,
+                            'voda': ts_voda,
+                            'kohout': ts_kohout,
+                            'rozdělovač': ts_rozdelovac,
+                            'výstřik_LP': ts_vystrik_lp,
+                            'výstřik_PP': ts_vystrik_pp,
+                            'LP': ts_lp,
+                            'PP': ts_pp
+                        }
+                        for ts_name, ts_value in timestamps_to_check.items():
+                            if ts_value is not None and ts_value > video_duration:
+                                warnings.append(f"Line {line_number}: {ts_name} is beyond video duration{title_info}")
+                    
                 except Exception as e:
                     warnings.append(f"Line {line_number}: Error validating timestamp order: {e}{title_info}")
     
@@ -262,6 +289,20 @@ def sanitize_filename(title):
     # Limit length and ensure it's not empty
     filename = filename[:50] if filename else "untitled"
     return filename
+
+def get_video_duration(video_path):
+    """Get video duration in seconds using ffprobe"""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1:nokey=1", video_path],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return float(result.stdout.strip())
+    except Exception as e:
+        print(f"WARNING: Could not determine video duration: {e}")
+        return None
 
 def timestamp_to_seconds(timestamp):
     """Convert HH:MM:SS.mmm to total seconds"""
@@ -392,10 +433,10 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     step = 3  # Height of each box layer in pixels
     
     for i in range(0, bar_height, step):
-        # Calculate opacity: starts at 0.1 at top, goes to 1 at bottom
+        # Calculate opacity: starts at 0.15 at top, goes to 0.9 at bottom
         # Linear interpolation: opacity = min_opacity + (max_opacity - min_opacity) * progress
         progress = i / bar_height  # 0.0 at top, 1.0 at bottom
-        opacity = 0.1 + (1.0 - 0.1) * progress
+        opacity = 0.15 + (0.9 - 0.15) * progress
         
         # Y position: starts from top of bar (ih-140) and goes down
         y_pos = f"ih-{bar_height - i}"
@@ -443,7 +484,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
         title_y = f"if(lt(t\\,{title_slide_in_start})\\,h+100\\,if(lt(t\\,{title_slide_in_end})\\,h+100-((t-{title_slide_in_start})/{title_slide_in_duration})*(130+th)\\,if(lt(t\\,{title_slide_out_start})\\,h-th-30\\,if(gte(t\\,{title_slide_out_end})\\,h+100\\,h-th-30+((t-{title_slide_out_start})/{title_slide_out_duration})*(130+th)))))"
         
         filters.append(
-            f"drawtext=text='{combined_text}':fontcolor=white:fontsize=60:x=45:y={title_y}"
+            f"drawtext=text='{combined_text}':fontcolor=white:fontsize=60:x=95:y={title_y}"
         )
     else:
         # Y position animation: slide in at start, then slide out when koš appears (or 4s after timer start)
@@ -458,7 +499,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
         title_y = f"if(lt(t\\,{title_slide_in_start})\\,h+100\\,if(lt(t\\,{title_slide_in_end})\\,h+100-((t-{title_slide_in_start})/{title_slide_in_duration})*(130+th)\\,if(lt(t\\,{title_slide_out_start})\\,h-th-30\\,if(gte(t\\,{title_slide_out_end})\\,h+100\\,h-th-30+((t-{title_slide_out_start})/{title_slide_out_duration})*(130+th)))))"
         
         filters.append(
-            f"drawtext=text='{title_safe}':fontcolor=white:fontsize=60:x=45:y={title_y}"
+            f"drawtext=text='{title_safe}':fontcolor=white:fontsize=60:x=95:y={title_y}"
         )
     
     # Timer overlay (bottom right) - separate elements to prevent width glitching
@@ -477,7 +518,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     
     # Position elements from right to left with fixed positions to prevent jumping
     # Using fixed pixel positions from the right edge
-    base_x = 240  # Base offset from right edge for the rightmost digit
+    base_x = 190  # Base offset from right edge for the rightmost digit
     
     # Centiseconds ones digit (rightmost)
     filters.append(
@@ -568,8 +609,8 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                     
                     # Bottom positions for PP and LP
                     # PP on the left, LP on the right
-                    pp_x_offset = 1315  # Offset from left edge
-                    lp_x_offset = 1630  # Offset from right edge
+                    pp_x_offset = 1265  # Offset from left edge
+                    lp_x_offset = 1580  # Offset from right edge
 
                     x_positions = {
                         'PP': f'w-tw-{pp_x_offset}',  # Left side
@@ -655,9 +696,9 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                     # Process koš, voda, rozdělovač splits at the bottom
                     # These appear left of the timer: rozdělovač (leftmost), voda (middle), koš (closest to timer)
                     bottom_split_names = [
-                        ('rozdělovač', 'Rozdělovač', 960),   # (key, display_name, x_offset_from_timer)
-                        ('voda', 'Voda', 780),
-                        ('koš', 'Koš', 600)
+                        ('rozdělovač', 'Rozdělovač', 910),   # (key, display_name, x_offset_from_timer)
+                        ('voda', 'Voda', 730),
+                        ('koš', 'Koš', 550)
                     ]
                     
                     for split_key, display_name, x_offset_from_timer in bottom_split_names:
@@ -716,53 +757,19 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     # Join all filters
     vf = ",".join(filters)
     
-    # Check if logo file exists and prepare command accordingly
-    logo_path = os.path.join(os.path.dirname(os.path.abspath(input_file)), "sdh_zbraslav-logo.png")
-    script_dir_logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sdh_zbraslav-logo.png")
-    
-    # Try both locations: same directory as video, or same directory as script
-    if os.path.exists(logo_path):
-        use_logo = True
-        logo_file = logo_path
-    elif os.path.exists(script_dir_logo):
-        use_logo = True
-        logo_file = script_dir_logo
-    else:
-        use_logo = False
-    
-    if use_logo:
-        # Build complex filter with logo overlay
-        # [0:v] is the main video, [1:v] is the logo
-        # Apply all filters to main video first, then overlay the logo at the end
-        complex_filter = f"[0:v]{vf}[vid];[1:v]scale=95:-1[logo];[vid][logo]overlay=W-w-30:H-h-20"
-        
-        cmd = [
-            "ffmpeg",
-            "-ss", start, "-i", input_file,
-            "-loop", "1", "-i", logo_file,
-            "-t", str(duration),
-            "-filter_complex", complex_filter,
-            "-c:v", "libx264", "-preset", "ultrafast",
-            "-crf", "18",
-            "-c:a", "aac", "-b:a", "128k",
-            "-avoid_negative_ts", "make_zero",
-            "-fflags", "+genpts",
-            "-y", out
-        ]
-    else:
-        # No logo, use simple filter
-        cmd = [
-            "ffmpeg",
-            "-ss", start, "-i", input_file,
-            "-t", str(duration),
-            "-vf", vf,
-            "-c:v", "libx264", "-preset", "ultrafast",
-            "-crf", "18",
-            "-c:a", "aac", "-b:a", "128k",
-            "-avoid_negative_ts", "make_zero",
-            "-fflags", "+genpts",
-            "-y", out
-        ]
+    # Build ffmpeg command
+    cmd = [
+        "ffmpeg",
+        "-ss", start, "-i", input_file,
+        "-t", str(duration),
+        "-vf", vf,
+        "-c:v", "libx264", "-preset", "ultrafast",
+        "-crf", "18",
+        "-c:a", "aac", "-b:a", "128k",
+        "-avoid_negative_ts", "make_zero",
+        "-fflags", "+genpts",
+        "-y", out
+    ]
     
     subprocess.run(cmd, check=True)
     return out
@@ -829,7 +836,7 @@ Examples:
 
         # Validate timestamps file first
         print("🔍 Validating timestamps file...")
-        is_valid, warnings = validate_timestamps_file(timestamps_file)
+        is_valid, warnings = validate_timestamps_file(timestamps_file, args.source)
         
         if not is_valid:
             print("\n⚠️  VALIDATION WARNINGS:")
