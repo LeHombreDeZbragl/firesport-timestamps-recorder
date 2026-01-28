@@ -75,6 +75,17 @@ from PyQt5.QtGui import QFont, QKeySequence
 from PyQt5.QtWidgets import QShortcut
 import vlc
 
+class SelectAllOnFocusLineEdit(QLineEdit):
+    """Custom QLineEdit that clears default value or selects all when it gains focus"""
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        # If the field contains the default value "0.000", clear it
+        if self.text() == "0.000":
+            self.clear()
+        else:
+            # Otherwise, select all text
+            self.selectAll()
+
 class VideoPlayer(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -231,6 +242,7 @@ class VideoPlayer(QMainWindow):
         
         self.segment_name_input = QLineEdit()
         self.segment_name_input.setPlaceholderText("Enter segment name (optional)")
+        self.segment_name_input.returnPressed.connect(self.unfocus_text_fields)
         naming_layout.addWidget(self.segment_name_input)
         timestamp_layout.addLayout(naming_layout)
         
@@ -284,13 +296,19 @@ class VideoPlayer(QMainWindow):
             split_layout.addWidget(time_input)
             
             # Relative time (from split 1 "start") - format: 00.000 (seconds with 3 decimals)
-            relative_input = QLineEdit("0.000")
-            relative_input.setMinimumWidth(100)
-            relative_input.setMaximumWidth(100)
-            relative_input.setStyleSheet("color: gray; font-size: 9pt;")
-            relative_input.editingFinished.connect(lambda idx=i: self.on_split_relative_time_edited(idx, self.split_relative_inputs[idx].text()))
-            self.split_relative_inputs.append(relative_input)
-            split_layout.addWidget(relative_input)
+            # Skip relative field for index 0 (start) - it doesn't make sense, it's always 0
+            if i == 0:
+                # Add placeholder to keep the list indices aligned
+                self.split_relative_inputs.append(None)
+            else:
+                relative_input = SelectAllOnFocusLineEdit("0.000")
+                relative_input.setMinimumWidth(100)
+                relative_input.setMaximumWidth(100)
+                relative_input.setStyleSheet("color: gray; font-size: 9pt;")
+                relative_input.editingFinished.connect(lambda idx=i: self.on_split_relative_time_edited(idx, self.split_relative_inputs[idx].text()))
+                relative_input.returnPressed.connect(self.unfocus_text_fields)
+                self.split_relative_inputs.append(relative_input)
+                split_layout.addWidget(relative_input)
             
             timestamp_layout.addLayout(split_layout)
         
@@ -301,11 +319,6 @@ class VideoPlayer(QMainWindow):
         self.end_button.setEnabled(False)
         self.end_button.setMinimumWidth(150)
         end_layout.addWidget(self.end_button)
-        
-        self.end_time_input = QLineEdit("00:00:00.000")
-        self.end_time_input.setMaximumWidth(120)
-        self.end_time_input.setStyleSheet("color: red; font-weight: bold;")
-        end_layout.addWidget(self.end_time_input)
         timestamp_layout.addLayout(end_layout)
         
         # Action buttons
@@ -416,8 +429,8 @@ class VideoPlayer(QMainWindow):
         """Handle mouse clicks to unfocus text fields"""
         focused_widget = self.focusWidget()
         if focused_widget == self.segment_name_input or focused_widget == self.segments_display or \
-           focused_widget in self.split_time_inputs or focused_widget == self.start_time_input or \
-           focused_widget == self.end_time_input:
+           focused_widget in [inp for inp in self.split_relative_inputs if inp is not None] or \
+           focused_widget in self.split_time_inputs or focused_widget == self.start_time_input:
             self.setFocus()
         super().mousePressEvent(event)
         
@@ -670,9 +683,10 @@ class VideoPlayer(QMainWindow):
                 self.split_time_inputs[idx].setText("00:00:00.000")
                 self.split_time_inputs[idx].setStyleSheet("color: orange; font-size: 9pt;")
                 self.split_time_inputs[idx].blockSignals(False)
-                self.split_relative_inputs[idx].blockSignals(True)
-                self.split_relative_inputs[idx].setText("0.000")
-                self.split_relative_inputs[idx].blockSignals(False)
+                if self.split_relative_inputs[idx] is not None:
+                    self.split_relative_inputs[idx].blockSignals(True)
+                    self.split_relative_inputs[idx].setText("0.000")
+                    self.split_relative_inputs[idx].blockSignals(False)
                 # If this was split 0 (reference), update all relative times
                 if idx == 0:
                     self.update_all_relative_times()
@@ -685,17 +699,15 @@ class VideoPlayer(QMainWindow):
                 self.split_time_inputs[idx].setText("00:00:00.000")
                 self.split_time_inputs[idx].setStyleSheet("color: orange; font-size: 9pt;")
                 self.split_time_inputs[idx].blockSignals(False)
-                self.split_relative_inputs[idx].blockSignals(True)
-                self.split_relative_inputs[idx].setText("0.000")
-                self.split_relative_inputs[idx].blockSignals(False)
+                if self.split_relative_inputs[idx] is not None:
+                    self.split_relative_inputs[idx].blockSignals(True)
+                    self.split_relative_inputs[idx].setText("0.000")
+                    self.split_relative_inputs[idx].blockSignals(False)
             elif ms > 0:
                 self.split_timestamps[idx] = ms
                 # Update relative time (relative to split 1 "start")
                 if idx == 0:
-                    # Split 1 is always 0.000 relative to itself
-                    self.split_relative_inputs[idx].blockSignals(True)
-                    self.split_relative_inputs[idx].setText("0.000")
-                    self.split_relative_inputs[idx].blockSignals(False)
+                    # Split 1 has no relative field (index 0 is None)
                     # Update all other splits
                     self.update_all_relative_times()
                 else:
@@ -711,6 +723,10 @@ class VideoPlayer(QMainWindow):
     
     def on_split_relative_time_edited(self, idx, text):
         """Handle manual edit of split relative time (relative to split 1)"""
+        # Skip if this is index 0 (no relative field for start)
+        if idx == 0 or self.split_relative_inputs[idx] is None:
+            return
+            
         try:
             # If field is empty or cleared, reset the split
             if not text or text.strip() == "":
@@ -719,17 +735,18 @@ class VideoPlayer(QMainWindow):
                 self.split_time_inputs[idx].setText("00:00:00.000")
                 self.split_time_inputs[idx].setStyleSheet("color: orange; font-size: 9pt;")
                 self.split_time_inputs[idx].blockSignals(False)
-                self.split_relative_inputs[idx].blockSignals(True)
-                self.split_relative_inputs[idx].setText("0.000")
-                self.split_relative_inputs[idx].blockSignals(False)
+                if self.split_relative_inputs[idx] is not None:
+                    self.split_relative_inputs[idx].blockSignals(True)
+                    self.split_relative_inputs[idx].setText("0.000")
+                    self.split_relative_inputs[idx].blockSignals(False)
                 return
+            
+            # Parse the seconds value (format: "00.000")
+            relative_sec = float(text.strip())
             
             # Special handling for LP (index 7) and PP (index 8) when used as start input
             # (only when start_timestamp is None and the LP/PP timestamp is set)
             if (idx == 7 or idx == 8) and self.start_timestamp is None and self.split_timestamps[idx] is not None:
-                # Parse the seconds value (format: "00.000")
-                relative_sec = float(text.strip())
-                
                 # Calculate Start timestamp: LP/PP timestamp - relative time
                 lp_pp_timestamp = self.split_timestamps[idx]
                 calculated_start = lp_pp_timestamp - int(relative_sec * 1000)
@@ -771,31 +788,32 @@ class VideoPlayer(QMainWindow):
                 self.segment_name_input.setFocus()
                 return
             
-            if idx == 0:
-                # Split 1 relative is always 0.000, editing it would change absolute time
-                # For now, we'll just ignore edits to split 1's relative field
-                return
-            
-            # Parse the seconds value (format: "00.000")
-            relative_sec = float(text.strip())
-            
-            # Check if value is 0, reset the split
-            if relative_sec == 0:
-                self.split_timestamps[idx] = None
-                self.split_time_inputs[idx].blockSignals(True)
-                self.split_time_inputs[idx].setText("00:00:00.000")
-                self.split_time_inputs[idx].setStyleSheet("color: orange; font-size: 9pt;")
-                self.split_time_inputs[idx].blockSignals(False)
-                return
-            
-            # Calculate absolute time based on split 1
+            # Normal case: when start (split 0) is already set, calculate absolute time
+            # Calculate absolute time based on split 1 (start)
             if self.split_timestamps[0] is not None:
+                # Check if value is 0, reset the split
+                if relative_sec == 0:
+                    self.split_timestamps[idx] = None
+                    self.split_time_inputs[idx].blockSignals(True)
+                    self.split_time_inputs[idx].setText("00:00:00.000")
+                    self.split_time_inputs[idx].setStyleSheet("color: orange; font-size: 9pt;")
+                    self.split_time_inputs[idx].blockSignals(False)
+                    return
+                
                 absolute_ms = self.split_timestamps[0] + int(relative_sec * 1000)
                 self.split_timestamps[idx] = absolute_ms
+                
                 # Update absolute time display
                 self.split_time_inputs[idx].blockSignals(True)
                 self.split_time_inputs[idx].setText(self.format_timestamp(absolute_ms))
+                self.split_time_inputs[idx].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
                 self.split_time_inputs[idx].blockSignals(False)
+                
+                # Update relative time display
+                self.split_relative_inputs[idx].blockSignals(True)
+                self.split_relative_inputs[idx].setText(f"{relative_sec:.3f}")
+                self.split_relative_inputs[idx].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
+                self.split_relative_inputs[idx].blockSignals(False)
         except:
             pass
     
@@ -803,21 +821,17 @@ class VideoPlayer(QMainWindow):
         """Update relative time displays for all splits (relative to split 1)"""
         # Split 1 (index 0) is the reference point
         if self.split_timestamps[0] is None:
-            # No reference point, reset all relatives
-            for idx in range(9):
-                self.split_relative_inputs[idx].blockSignals(True)
-                self.split_relative_inputs[idx].setText("0.000")
-                self.split_relative_inputs[idx].blockSignals(False)
+            # No reference point, reset all relatives (skip index 0)
+            for idx in range(1, 9):
+                if self.split_relative_inputs[idx] is not None:
+                    self.split_relative_inputs[idx].blockSignals(True)
+                    self.split_relative_inputs[idx].setText("0.000")
+                    self.split_relative_inputs[idx].blockSignals(False)
             return
         
-        # Split 1 is always 0.000 relative to itself
-        self.split_relative_inputs[0].blockSignals(True)
-        self.split_relative_inputs[0].setText("0.000")
-        self.split_relative_inputs[0].blockSignals(False)
-        
-        # Calculate others relative to split 1
+        # Calculate others relative to split 1 (skip index 0 - no relative field for start)
         for idx in range(1, 9):
-            if self.split_timestamps[idx] is not None:
+            if self.split_relative_inputs[idx] is not None and self.split_timestamps[idx] is not None:
                 relative_ms = self.split_timestamps[idx] - self.split_timestamps[0]
                 relative_sec = relative_ms / 1000.0
                 self.split_relative_inputs[idx].blockSignals(True)
@@ -826,7 +840,8 @@ class VideoPlayer(QMainWindow):
     
     def on_end_time_edited(self):
         """Handle manual edit of end time - not used for timestamp, just display"""
-        pass
+        # No special handling needed for end time display
+        return
         
     def save_start_timestamp(self):
         """Save the current timestamp as start time (Začátek)"""
@@ -850,8 +865,9 @@ class VideoPlayer(QMainWindow):
                 time_input.setText("00:00:00.000")
             
             # Reset relative time inputs
-            for relative_input in self.split_relative_inputs:
-                relative_input.setText("0.000")
+            for i, relative_input in enumerate(self.split_relative_inputs):
+                if relative_input is not None:  # Skip index 0 which is None
+                    relative_input.setText("0.000")
             
             # Update placeholder
             next_num = len(self.segments) + 1
@@ -861,7 +877,7 @@ class VideoPlayer(QMainWindow):
             self.segment_name_input.setFocus()
     
     def subtract_150ms_from_start(self):
-        """Subtract 150ms from the first split (start) timestamp"""
+        """Subtract 150 milliseconds from the first split (start) timestamp"""
         if self.split_timestamps[0] is not None and self.split_timestamps[0] > 0:
             new_timestamp = max(0, self.split_timestamps[0] - 150)
             self.split_timestamps[0] = new_timestamp
@@ -897,11 +913,12 @@ class VideoPlayer(QMainWindow):
             self.split_time_inputs[split_index].blockSignals(False)
             
             # Clear and focus on relative time field for manual entry
-            self.split_relative_inputs[split_index].blockSignals(True)
-            self.split_relative_inputs[split_index].setText("")
-            self.split_relative_inputs[split_index].blockSignals(False)
-            self.split_relative_inputs[split_index].setFocus()
-            self.split_relative_inputs[split_index].selectAll()
+            if self.split_relative_inputs[split_index] is not None:
+                self.split_relative_inputs[split_index].blockSignals(True)
+                self.split_relative_inputs[split_index].setText("")
+                self.split_relative_inputs[split_index].blockSignals(False)
+                self.split_relative_inputs[split_index].setFocus()
+                self.split_relative_inputs[split_index].selectAll()
             return
         
         # Special handling for split 0 (start) - automatically derive začátek if not set
@@ -920,9 +937,8 @@ class VideoPlayer(QMainWindow):
             self.split_time_inputs[split_index].setText(formatted_time)
             self.split_time_inputs[split_index].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
             
-            # Split 1 is always 0.000 relative to itself
-            self.split_relative_inputs[split_index].setText("0.000")
-            self.split_relative_inputs[split_index].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
+            # No relative time field for split 0 (start)
+            # (split_relative_inputs[0] is None)
             
             # Enable all other split buttons and end button
             for btn in self.split_buttons:
@@ -950,12 +966,12 @@ class VideoPlayer(QMainWindow):
                 self.split_time_inputs[split_index].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
                 
                 # Calculate relative to split 1
-                if self.split_timestamps[0] is not None:
+                if self.split_timestamps[0] is not None and self.split_relative_inputs[split_index] is not None:
                     relative_ms = split_timestamp - self.split_timestamps[0]
                     relative_sec = relative_ms / 1000.0
                     self.split_relative_inputs[split_index].setText(f"{relative_sec:.3f}")
                     self.split_relative_inputs[split_index].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
-                else:
+                elif self.split_relative_inputs[split_index] is not None:
                     # No reference point yet
                     self.split_relative_inputs[split_index].setText("0.000")
                     self.split_relative_inputs[split_index].setStyleSheet("color: gray; font-size: 9pt;")
@@ -1007,7 +1023,6 @@ class VideoPlayer(QMainWindow):
             self.start_timestamp = None
             self.split_timestamps = [None] * 9
             self.start_time_input.setText("00:00:00.000")
-            self.end_time_input.setText("00:00:00.000")
             self.end_button.setEnabled(False)
             
             # Restore initial state: enable Začátek, first split (start), LP, and PP
@@ -1024,9 +1039,10 @@ class VideoPlayer(QMainWindow):
                 time_input.setStyleSheet("color: orange; font-size: 9pt;")
             
             # Reset relative time inputs
-            for relative_input in self.split_relative_inputs:
-                relative_input.setText("0.000")
-                relative_input.setStyleSheet("color: gray; font-size: 9pt;")
+            for i, relative_input in enumerate(self.split_relative_inputs):
+                if relative_input is not None:  # Skip index 0 which is None
+                    relative_input.setText("0.000")
+                    relative_input.setStyleSheet("color: gray; font-size: 9pt;")
             
             # Clear the input field
             self.segment_name_input.clear()
@@ -1137,7 +1153,6 @@ class VideoPlayer(QMainWindow):
         # Reset input fields
         self.start_time_input.setText("00:00:00.000")
         self.start_time_input.setStyleSheet("color: orange;")
-        self.end_time_input.setText("00:00:00.000")
         self.segment_name_input.clear()
         
         # Reset split inputs
@@ -1146,9 +1161,10 @@ class VideoPlayer(QMainWindow):
             time_input.setStyleSheet("color: orange; font-size: 9pt;")
         
         # Reset relative time inputs
-        for relative_input in self.split_relative_inputs:
-            relative_input.setText("0.000")
-            relative_input.setStyleSheet("color: gray; font-size: 9pt;")
+        for i, relative_input in enumerate(self.split_relative_inputs):
+            if relative_input is not None:  # Skip index 0 which is None
+                relative_input.setText("0.000")
+                relative_input.setStyleSheet("color: gray; font-size: 9pt;")
         
         # Restore initial state: enable Začátek, first split (start), LP, and PP
         self.start_button.setEnabled(True)
@@ -1178,7 +1194,6 @@ class VideoPlayer(QMainWindow):
                 self.split_timestamps = [None] * 9
                 self.start_time_input.setText("00:00:00.000")
                 self.start_time_input.setStyleSheet("color: orange;")
-                self.end_time_input.setText("00:00:00.000")
                 self.end_button.setEnabled(False)
                 
                 # Restore initial state: enable Začátek, first split (start), LP, and PP
@@ -1195,9 +1210,10 @@ class VideoPlayer(QMainWindow):
                     time_input.setStyleSheet("color: orange; font-size: 9pt;")
                 
                 # Reset relative time inputs
-                for relative_input in self.split_relative_inputs:
-                    relative_input.setText("0.000")
-                    relative_input.setStyleSheet("color: gray; font-size: 9pt;")
+                for i, relative_input in enumerate(self.split_relative_inputs):
+                    if relative_input is not None:  # Skip index 0 which is None
+                        relative_input.setText("0.000")
+                        relative_input.setStyleSheet("color: gray; font-size: 9pt;")
                 
                 self.update_segments_display()
                 
