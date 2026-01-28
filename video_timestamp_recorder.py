@@ -231,7 +231,6 @@ class VideoPlayer(QMainWindow):
         
         self.segment_name_input = QLineEdit()
         self.segment_name_input.setPlaceholderText("Enter segment name (optional)")
-        self.segment_name_input.returnPressed.connect(self.save_end_timestamp)
         naming_layout.addWidget(self.segment_name_input)
         timestamp_layout.addLayout(naming_layout)
         
@@ -289,7 +288,7 @@ class VideoPlayer(QMainWindow):
             relative_input.setMinimumWidth(100)
             relative_input.setMaximumWidth(100)
             relative_input.setStyleSheet("color: gray; font-size: 9pt;")
-            relative_input.textChanged.connect(lambda text, idx=i: self.on_split_relative_time_edited(idx, text))
+            relative_input.editingFinished.connect(lambda idx=i: self.on_split_relative_time_edited(idx, self.split_relative_inputs[idx].text()))
             self.split_relative_inputs.append(relative_input)
             split_layout.addWidget(relative_input)
             
@@ -441,10 +440,10 @@ class VideoPlayer(QMainWindow):
             self.seek_back_button.setEnabled(True)
             self.seek_forward_button.setEnabled(True)
             
-            # Enable both Začátek button and first split button (start - index 0)
+            # Enable Začátek button, first split button (start - index 0), LP (index 7), and PP (index 8)
             self.start_button.setEnabled(True)
             for i, btn in enumerate(self.split_buttons):
-                if i == 0:  # First split (start)
+                if i == 0 or i == 7 or i == 8:  # First split (start), LP, PP
                     btn.setEnabled(True)
                 else:
                     btn.setEnabled(False)
@@ -725,6 +724,53 @@ class VideoPlayer(QMainWindow):
                 self.split_relative_inputs[idx].blockSignals(False)
                 return
             
+            # Special handling for LP (index 7) and PP (index 8) when used as start input
+            # (only when start_timestamp is None and the LP/PP timestamp is set)
+            if (idx == 7 or idx == 8) and self.start_timestamp is None and self.split_timestamps[idx] is not None:
+                # Parse the seconds value (format: "00.000")
+                relative_sec = float(text.strip())
+                
+                # Calculate Start timestamp: LP/PP timestamp - relative time
+                lp_pp_timestamp = self.split_timestamps[idx]
+                calculated_start = lp_pp_timestamp - int(relative_sec * 1000)
+                calculated_start = max(0, calculated_start)  # Ensure non-negative
+                
+                # Set the start split (index 0) timestamp
+                self.split_timestamps[0] = calculated_start
+                self.split_time_inputs[0].blockSignals(True)
+                self.split_time_inputs[0].setText(self.format_timestamp(calculated_start))
+                self.split_time_inputs[0].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
+                self.split_time_inputs[0].blockSignals(False)
+                
+                # Calculate Začátek (Start button) timestamp: Start - 5 seconds
+                zacat_timestamp = max(0, calculated_start - 5000)
+                self.start_timestamp = zacat_timestamp
+                self.start_time_input.setText(self.format_timestamp(zacat_timestamp))
+                self.start_time_input.setStyleSheet("color: green; font-weight: bold;")
+                
+                # Enable all buttons since we now have a start
+                self.start_button.setEnabled(True)
+                self.end_button.setEnabled(True)
+                for btn in self.split_buttons:
+                    btn.setEnabled(True)
+                
+                # Update all relative times since we have a new reference point
+                self.update_all_relative_times()
+                
+                # Update the relative time display for the LP/PP that was just set
+                self.split_relative_inputs[idx].blockSignals(True)
+                self.split_relative_inputs[idx].setText(f"{relative_sec:.3f}")
+                self.split_relative_inputs[idx].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
+                self.split_relative_inputs[idx].blockSignals(False)
+                
+                # Update placeholder
+                next_num = len(self.segments) + 1
+                self.segment_name_input.setPlaceholderText(f"Segment {next_num} (or custom name)")
+                
+                # Focus the input field
+                self.segment_name_input.setFocus()
+                return
+            
             if idx == 0:
                 # Split 1 relative is always 0.000, editing it would change absolute time
                 # For now, we'll just ignore edits to split 1's relative field
@@ -837,6 +883,27 @@ class VideoPlayer(QMainWindow):
         if split_timestamp < 0:
             return
         
+        # Special handling for LP (index 7) and PP (index 8) when in initial state
+        # (only when start_timestamp is None)
+        if (split_index == 7 or split_index == 8) and self.start_timestamp is None:
+            # Save the timestamp
+            self.split_timestamps[split_index] = split_timestamp
+            formatted_time = self.format_timestamp(split_timestamp)
+            
+            # Block signals to prevent textChanged from resetting the field
+            self.split_time_inputs[split_index].blockSignals(True)
+            self.split_time_inputs[split_index].setText(formatted_time)
+            self.split_time_inputs[split_index].setStyleSheet("color: green; font-size: 9pt; font-weight: bold;")
+            self.split_time_inputs[split_index].blockSignals(False)
+            
+            # Clear and focus on relative time field for manual entry
+            self.split_relative_inputs[split_index].blockSignals(True)
+            self.split_relative_inputs[split_index].setText("")
+            self.split_relative_inputs[split_index].blockSignals(False)
+            self.split_relative_inputs[split_index].setFocus()
+            self.split_relative_inputs[split_index].selectAll()
+            return
+        
         # Special handling for split 0 (start) - automatically derive začátek if not set
         if split_index == 0:
             if self.start_timestamp is None:
@@ -943,10 +1010,10 @@ class VideoPlayer(QMainWindow):
             self.end_time_input.setText("00:00:00.000")
             self.end_button.setEnabled(False)
             
-            # Restore initial state: enable Začátek and first split (start), disable others
+            # Restore initial state: enable Začátek, first split (start), LP, and PP
             self.start_button.setEnabled(True)
             for i, btn in enumerate(self.split_buttons):
-                if i == 0:  # First split (start)
+                if i == 0 or i == 7 or i == 8:  # First split (start), LP, PP
                     btn.setEnabled(True)
                 else:
                     btn.setEnabled(False)
@@ -1083,11 +1150,11 @@ class VideoPlayer(QMainWindow):
             relative_input.setText("0.000")
             relative_input.setStyleSheet("color: gray; font-size: 9pt;")
         
-        # Restore initial state: enable Začátek and first split (start), disable others
+        # Restore initial state: enable Začátek, first split (start), LP, and PP
         self.start_button.setEnabled(True)
         self.end_button.setEnabled(False)
         for i, btn in enumerate(self.split_buttons):
-            if i == 0:  # First split (start)
+            if i == 0 or i == 7 or i == 8:  # First split (start), LP, PP
                 btn.setEnabled(True)
             else:
                 btn.setEnabled(False)
@@ -1114,10 +1181,10 @@ class VideoPlayer(QMainWindow):
                 self.end_time_input.setText("00:00:00.000")
                 self.end_button.setEnabled(False)
                 
-                # Restore initial state: enable Začátek and first split (start), disable others
+                # Restore initial state: enable Začátek, first split (start), LP, and PP
                 self.start_button.setEnabled(True)
                 for i, btn in enumerate(self.split_buttons):
-                    if i == 0:  # First split (start)
+                    if i == 0 or i == 7 or i == 8:  # First split (start), LP, PP
                         btn.setEnabled(True)
                     else:
                         btn.setEnabled(False)
