@@ -171,6 +171,14 @@ class VideoPlayer(QMainWindow):
         self.current_time_label.setStyleSheet("color: blue; padding: 5px;")
         time_layout.addWidget(QLabel("Current Time:"))
         time_layout.addWidget(self.current_time_label)
+        
+        # Relative time display (relative to start)
+        time_layout.addWidget(QLabel("  |  Relative:"))
+        self.relative_time_label = QLabel("00.000")
+        self.relative_time_label.setFont(QFont("Courier", 16, QFont.Bold))
+        self.relative_time_label.setStyleSheet("color: green; padding: 5px;")
+        time_layout.addWidget(self.relative_time_label)
+        
         time_layout.addStretch()
         left_layout.addLayout(time_layout)
         
@@ -603,6 +611,14 @@ class VideoPlayer(QMainWindow):
             current_time = self.get_current_timestamp_ms()
             if current_time >= 0:
                 self.current_time_label.setText(self.format_timestamp(current_time))
+                
+                # Update relative time (relative to start split)
+                if self.split_timestamps[0] is not None and self.split_timestamps[0] > 0:
+                    relative_ms = current_time - self.split_timestamps[0]
+                    relative_sec = relative_ms / 1000.0
+                    self.relative_time_label.setText(f"{relative_sec:.3f}")
+                else:
+                    self.relative_time_label.setText("00.000")
                 
                 duration = self.media_player.get_length()
                 if duration > 0:
