@@ -8,6 +8,7 @@ Four tools for recording timestamps, downloading YouTube videos, cutting/joining
 - `video_timestamp_recorder.py` — GUI for frame-accurate timestamps
 - `firetimer-cutvid.py` — Cut by timestamps, add title+timer overlays
 - `firetimer-joinvids.py` — Fast FFmpeg concat joiner
+- `add-timer.py` — Add a running timer overlay to any video
 
 Setup
 -----
@@ -44,6 +45,11 @@ make cut SOURCE=video.mp4 TIMES=timestamps.txt SORT=1
 
 # Join parts manually
 make join FOLDER=path/to/parts OUTPUT=final.mp4
+
+# Add timer overlay to a video
+make timer SOURCE=video.mp4
+make timer SOURCE=video.mp4 START=00:00:05.000 END=00:00:20.000
+make timer SOURCE=video.mp4 START=00:00:05.000 END_REL=00:00:15.000
 ```
 
 Quick Start (Direct Python)
@@ -61,6 +67,10 @@ python3 firetimer-cutvid.py -s video.mp4 -t timestamps.txt
 
 # Join parts
 python3 firetimer-joinvids.py --parts path/to/parts
+
+# Add timer overlay
+python3 add-timer.py -s video.mp4
+python3 add-timer.py -s video.mp4 --start 00:00:05.000 --end 00:00:20.000
 ```
 
 Workflow Example
