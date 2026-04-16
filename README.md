@@ -272,6 +272,10 @@ Troubleshooting
 - **Python version mismatch:** Project recommends Python 3.13, but 3.8+ is supported. If you have 3.12, it will work fine.
 - **FFmpeg not found:** See Step 1 above for install instructions per OS
 - **VLC not found:** Required only for GUI — see Step 1 above
+- **Download command fails with "unrecognized arguments":** On Windows, URLs with special characters (like dashes `-`) need to be quoted:
+  - ❌ `run.bat download -u https://youtube.com/watch?v=-xyz -n video` (fails)
+  - ✅ `run.bat download -u "https://youtube.com/watch?v=-xyz" -n video` (works)
+- **yt-dlp JavaScript runtime warning:** You may see a warning about "No supported JavaScript runtime could be found" during downloads. This is harmless — downloads will still work. To eliminate the warning, install Node.js from [nodejs.org](https://nodejs.org/)
 - **Run `--help` on any script** for detailed options (e.g. `python3 firetimer-cutvid.py --help` or `make cut --help`)
 
 License

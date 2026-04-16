@@ -5,5 +5,5 @@
 #   Windows: https://www.videolan.org/
 
 -r requirements.txt
-PyQt5==5.15.9
+PyQt5==5.15.10
 python-vlc==3.0.18121
