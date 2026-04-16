@@ -89,6 +89,7 @@ Desktop.ini
 !requirements_gui.txt
 !README.md
 !install.py
+!setup.bat
 !run.bat
 !pyproject.toml
 !.python-version

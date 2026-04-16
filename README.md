@@ -13,6 +13,34 @@ Four tools for recording timestamps, downloading YouTube videos, cutting/joining
 Setup
 -----
 
+### Step 0: Install Python (if not already installed)
+
+**Minimum required: Python 3.8**  
+**Recommended: Python 3.13** (see `.python-version`)
+
+#### Windows
+
+1. Download from [python.org](https://www.python.org/downloads/) → get latest 3.13 or 3.12
+2. **Important:** Check "Add Python to PATH" during installation
+3. Restart your terminal/command prompt
+4. Verify: Open Windows PowerShell/CMD and type:
+   ```bat
+   python --version
+   ```
+
+#### Linux
+
+Usually pre-installed. If not:
+```bash
+sudo apt-get install python3 python3-venv
+```
+
+#### macOS
+
+```bash
+brew install python3
+```
+
 ### Step 1: Install system dependencies
 
 **FFmpeg** (required by all tools):
@@ -33,28 +61,35 @@ Setup
 
 ### Step 2: Set up Python environment
 
-Choose your setup method:
+**Windows:**
+```bat
+setup.bat
+```
+*Interactive script that detects Python and asks if you want GUI support.*
 
-**Option A: Automated (recommended)**
+**Linux/macOS:**
+
+Automated:
 ```bash
-# CLI tools only
-python3 install.py
-
-# CLI + GUI recorder
-python3 install.py --gui
+python3 install.py          # CLI only
+python3 install.py --gui    # CLI + GUI
 ```
 
-**Option B: With Makefile (Linux/macOS only)**
+With Makefile:
 ```bash
 make setup
 ```
 
-**Option C: Manual**
+**All platforms - Manual:**
 ```bash
-python3 -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
-pip install -r requirements.txt   # CLI only
-pip install -r requirements_gui.txt  # CLI + GUI
+python3 -m venv venv                     # Linux/macOS
+python -m venv venv                      # Windows (use python, not python3)
+
+source venv/bin/activate                 # Linux/macOS
+venv\Scripts\activate                    # Windows
+
+pip install -r requirements.txt          # CLI only
+pip install -r requirements_gui.txt      # CLI + GUI
 ```
 
 Quick Start
@@ -117,6 +152,9 @@ run.bat timer -s video.mp4 --start 00:00:05.000 --end 00:00:20.000  :: Timer wit
 ### Direct Python (All platforms)
 
 ```bash
+# Windows: use 'python' instead of 'python3'
+# Linux/macOS: use 'python3'
+
 # Workflow: download → record → cut → output
 python3 firetimer-ytdownload.py -u https://youtube.com/watch?v=xyz -n myvideo
 python3 video_timestamp_recorder.py
@@ -189,9 +227,14 @@ Folder Structure
 
 Troubleshooting
 ---------------
-- FFmpeg not found: see Step 1 above for install instructions per OS
-- VLC not found: required only for GUI — see Step 1 above
-- Run `--help` on any script for detailed options (e.g. `python3 firetimer-cutvid.py --help` or `make cut --help`)
+- **Python not found:** Make sure Python 3.8+ is installed and on your PATH (see Step 0 in Setup above)
+  - Windows: Download from [python.org](https://www.python.org/), check "Add Python to PATH"
+  - Linux: `sudo apt-get install python3`
+  - macOS: `brew install python3`
+- **Python version mismatch:** Project recommends Python 3.13, but 3.8+ is supported. If you have 3.12, it will work fine.
+- **FFmpeg not found:** See Step 1 above for install instructions per OS
+- **VLC not found:** Required only for GUI — see Step 1 above
+- **Run `--help` on any script** for detailed options (e.g. `python3 firetimer-cutvid.py --help` or `make cut --help`)
 
 License
 -------
