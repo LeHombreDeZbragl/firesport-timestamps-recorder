@@ -22,8 +22,8 @@ Setup
 
 1. Download from [python.org](https://www.python.org/downloads/) → get latest 3.13 or 3.12
 2. **Important:** Check "Add Python to PATH" during installation
-3. Restart your terminal/command prompt
-4. Verify: Open Windows PowerShell/CMD and type:
+3. Restart your terminal
+4. Verify: Open Windows CMD and type:
    ```bat
    python --version
    ```
@@ -95,7 +95,7 @@ pip install -r requirements_gui.txt      # CLI + GUI
 Quick Start
 -----------
 
-Choose your preferred interface and run the commands below. All three methods do the same thing.
+Choose your preferred interface. All three methods do the same thing.
 
 ### Makefile (Linux/macOS)
 
@@ -111,13 +111,26 @@ make cut SOURCE=myvideo.mp4 TIMES=timestamps.txt
 # Output: out-parts/ folder + final_myvideo.mp4
 
 # Individual commands:
-make download URL='https://youtube.com/watch?v=xyz' NAME=myvideo  # Download video
-make gui                                                           # Record timestamps (GUI)
-make cut SOURCE=video.mp4 TIMES=timestamps.txt                    # Cut by timestamps
-make cut SOURCE=video.mp4 TIMES=timestamps.txt SORT=1             # Cut + sort by time
-make join FOLDER=path/to/parts OUTPUT=final.mp4                   # Join parts
-make timer SOURCE=video.mp4                                       # Add timer overlay
-make timer SOURCE=video.mp4 START=00:00:05.000 END=00:00:20.000   # Timer with time range
+make download URL='https://youtube.com/watch?v=xyz' NAME=myvideo                            
+# Download video
+make download URL='https://youtube.com/watch?v=xyz' NAME=myvideo FOLDER=myfolder CHUNK=10   
+# Download to folder, 10min chunks
+make gui                                                                                     
+# Record timestamps (GUI)
+make cut SOURCE=video.mp4 TIMES=timestamps.txt                                              
+# Cut by timestamps
+make cut SOURCE=video.mp4 TIMES=timestamps.txt SORT=1                                       
+# Cut + sort by time
+make join FOLDER=path/to/parts OUTPUT=final.mp4                                             
+# Join parts
+make timer SOURCE=video.mp4                                                                 
+# Add timer overlay
+make timer SOURCE=video.mp4 START=00:00:05.000 END=00:00:20.000                            
+# Timer with time range
+make timer SOURCE=video.mp4 START=00:00:05.000 END_REL=00:00:15.000                        
+# Timer with relative end
+make timer SOURCE=video.mp4 START=00:00:05.000 END=00:00:20.000 OUTPUT=out.mp4             
+# Timer with custom output
 ```
 
 ---
@@ -127,8 +140,6 @@ make timer SOURCE=video.mp4 START=00:00:05.000 END=00:00:20.000   # Timer with t
 ```bat
 REM Show help
 run.bat
-REM or
-run.bat help
 
 REM Workflow: download → record → cut → output
 run.bat download -u https://youtube.com/watch?v=xyz -n myvideo
@@ -138,13 +149,26 @@ run.bat cut -s myvideo.mp4 -t timestamps.txt
 REM Output: out-parts\ folder + final_myvideo.mp4
 
 REM Individual commands:
-run.bat download -u https://youtube.com/watch?v=xyz -n myvideo      :: Download video
-run.bat gui                                                          :: Record timestamps (GUI)
-run.bat cut -s video.mp4 -t timestamps.txt                           :: Cut by timestamps
-run.bat cut -s video.mp4 -t timestamps.txt -z                        :: Cut + sort by time
-run.bat join --parts path\to\parts --out final.mp4                   :: Join parts
-run.bat timer -s video.mp4                                           :: Add timer overlay
-run.bat timer -s video.mp4 --start 00:00:05.000 --end 00:00:20.000  :: Timer with time range
+run.bat download -u https://youtube.com/watch?v=xyz -n myvideo                       
+REM Download video
+run.bat download -u https://youtube.com/watch?v=xyz -n myvideo -f myfolder -c 10     
+REM Download to folder, 10min chunks
+run.bat gui                                                                           
+REM Record timestamps (GUI)
+run.bat cut -s video.mp4 -t timestamps.txt                                            
+REM Cut by timestamps
+run.bat cut -s video.mp4 -t timestamps.txt -z                                         
+REM Cut + sort by time
+run.bat join --parts path\to\parts --out final.mp4                                    
+REM Join parts
+run.bat timer -s video.mp4                                                            
+REM Add timer overlay
+run.bat timer -s video.mp4 --start 00:00:05.000 --end 00:00:20.000                   
+REM Timer with time range
+run.bat timer -s video.mp4 --start 00:00:05.000 --end-relative 00:00:15.000          
+REM Timer with relative end
+run.bat timer -s video.mp4 --start 00:00:05.000 --end 00:00:20.000 -o out.mp4        
+REM Timer with custom output
 ```
 
 ---
@@ -163,25 +187,27 @@ python3 firetimer-cutvid.py -s myvideo.mp4 -t timestamps.txt
 # Output: out-parts/ folder + final_myvideo.mp4
 
 # Individual commands:
-python3 firetimer-ytdownload.py -u https://youtube.com/watch?v=xyz -n myvideo     # Download video
-python3 video_timestamp_recorder.py                                                # Record timestamps (GUI)
-python3 firetimer-cutvid.py -s video.mp4 -t timestamps.txt                         # Cut by timestamps
-python3 firetimer-cutvid.py -s video.mp4 -t timestamps.txt -z                      # Cut + sort by time
-python3 firetimer-joinvids.py --parts path/to/parts --out final.mp4                # Join parts
-python3 add-timer.py -s video.mp4                                                  # Add timer overlay
-python3 add-timer.py -s video.mp4 --start 00:00:05.000 --end 00:00:20.000          # Timer with time range
+python3 firetimer-ytdownload.py -u https://youtube.com/watch?v=xyz -n myvideo                    
+# Download video
+python3 firetimer-ytdownload.py -u https://youtube.com/watch?v=xyz -n myvideo -f myfolder -c 10  
+# Download to folder, 10min chunks
+python3 video_timestamp_recorder.py                                                               
+# Record timestamps (GUI)
+python3 firetimer-cutvid.py -s video.mp4 -t timestamps.txt                                       
+# Cut by timestamps
+python3 firetimer-cutvid.py -s video.mp4 -t timestamps.txt -z                                    
+# Cut + sort by time
+python3 firetimer-joinvids.py --parts path/to/parts --out final.mp4                              
+# Join parts
+python3 add-timer.py -s video.mp4                                                                
+# Add timer overlay
+python3 add-timer.py -s video.mp4 --start 00:00:05.000 --end 00:00:20.000                       
+# Timer with time range
+python3 add-timer.py -s video.mp4 --start 00:00:05.000 --end-relative 00:00:15.000              
+# Timer with relative end
+python3 add-timer.py -s video.mp4 --start 00:00:05.000 --end 00:00:20.000 -o out.mp4            
+# Timer with custom output
 ```
-
----
-
-#### Show all available commands
-
-**Makefile:**
-```bash
-make help
-```
-
-**Windows/Direct Python:** See [Options](#options) section below.
 
 Timestamp File Format
 ---------------------
@@ -210,7 +236,8 @@ Options
 -------
 **YouTube Download:**
 - `-u, --url` (required) — YouTube URL
-- `-n, --name` (required) — filename/folder name
+- `-n, --name` (required) — filename/folder name (also default folder name)
+- `-f, --folder` — output folder (default: uses `--name` as folder name)
 - `-s, --start` / `-e, --end` — time range (minutes, MM:SS, or HH:MM:SS)
 - `-c, --chunk-minutes` — chunk size (default: 120)
 
@@ -218,6 +245,17 @@ Options
 - `-s, --source` (required) — video file
 - `-t, --times` (required) — timestamps file
 - `-z` — sort by final time (max of LP/PP) and add placement labels (1.místo, 2.místo, etc.)
+
+**Join Video:**
+- `-f, --folder, --parts` (required) — folder containing MP4 parts to join
+- `-O, --out` — output filename (default: auto-generated based on folder type)
+
+**Add Timer:**
+- `-s, --source` (required) — input video file
+- `--start` — absolute time when timer starts counting (default: 00:00:00.000)
+- `--end` — absolute time when timer freezes (default: end of video)
+- `--end-relative` — duration from `--start` when timer freezes (alternative to `--end`)
+- `-o, --output` — output file (default: `<source_stem>_timer.mp4`)
 
 Folder Structure
 ----------------

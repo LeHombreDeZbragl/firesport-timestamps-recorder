@@ -22,6 +22,7 @@ echo.
 
 REM Ask user if they want GUI
 set /p GUI="Do you want to install GUI support? (y/n, default=n): "
+echo.
 if /i "%GUI%"=="y" (
     echo Running: python install.py --gui
     python install.py --gui

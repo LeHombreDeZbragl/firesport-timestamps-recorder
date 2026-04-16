@@ -9,8 +9,8 @@ set "PYTHON=%SCRIPT_DIR%venv\Scripts\python.exe"
 
 if not exist "%PYTHON%" (
     echo ERROR: Virtual environment not found.
-    echo Run setup first:  python install.py
-    echo Or for GUI:       python install.py --gui
+    echo Run setup first:  setup.bat
+    echo Interactive script that detects Python and asks if you want GUI support.
     exit /b 1
 )
 
@@ -22,26 +22,22 @@ if "%COMMAND%"=="gui" (
 )
 
 if "%COMMAND%"=="download" (
-    shift
-    "%PYTHON%" "%SCRIPT_DIR%firetimer-ytdownload.py" %*
+    "%PYTHON%" "%SCRIPT_DIR%firetimer-ytdownload.py" %2 %3 %4 %5 %6 %7 %8 %9
     goto :EOF
 )
 
 if "%COMMAND%"=="cut" (
-    shift
-    "%PYTHON%" "%SCRIPT_DIR%firetimer-cutvid.py" %*
+    "%PYTHON%" "%SCRIPT_DIR%firetimer-cutvid.py" %2 %3 %4 %5 %6 %7 %8 %9
     goto :EOF
 )
 
 if "%COMMAND%"=="join" (
-    shift
-    "%PYTHON%" "%SCRIPT_DIR%firetimer-joinvids.py" %*
+    "%PYTHON%" "%SCRIPT_DIR%firetimer-joinvids.py" %2 %3 %4 %5 %6 %7 %8 %9
     goto :EOF
 )
 
 if "%COMMAND%"=="timer" (
-    shift
-    "%PYTHON%" "%SCRIPT_DIR%add-timer.py" %*
+    "%PYTHON%" "%SCRIPT_DIR%add-timer.py" %2 %3 %4 %5 %6 %7 %8 %9
     goto :EOF
 )
 
@@ -58,8 +54,11 @@ echo   timer -s ^<video.mp4^> [options]          Add timer overlay to video
 echo.
 echo Examples:
 echo   run.bat download -u https://youtube.com/watch?v=xyz -n myvideo
+echo   run.bat download -u https://youtube.com/watch?v=xyz -n myvideo -f myfolder -c 10
 echo   run.bat cut -s myvideo.mp4 -t timestamps.txt
 echo   run.bat timer -s myvideo.mp4 --start 00:00:05.000 --end 00:00:20.000
+echo   run.bat timer -s myvideo.mp4 --start 00:00:05.000 --end-relative 00:00:15.000
+echo   run.bat timer -s myvideo.mp4 --start 00:00:05.000 --end 00:00:20.000 -o out.mp4
 echo.
 echo Pass --help to any command for full options, e.g.:
 echo   run.bat download --help
