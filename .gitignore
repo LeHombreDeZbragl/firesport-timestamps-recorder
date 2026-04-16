@@ -88,8 +88,10 @@ Desktop.ini
 !requirements.txt
 !requirements_gui.txt
 !README.md
-!setup.sh
-!activate_env.sh
+!install.py
+!run.bat
+!pyproject.toml
+!.python-version
 
 # Remove these unnecessary files
 test_*/

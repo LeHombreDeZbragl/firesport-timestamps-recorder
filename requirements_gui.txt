@@ -1,2 +1,9 @@
+# GUI dependencies (includes CLI deps via base requirements)
+# Requires VLC media player installed on your system:
+#   Linux:   sudo apt-get install vlc
+#   macOS:   brew install --cask vlc
+#   Windows: https://www.videolan.org/
+
+-r requirements.txt
 PyQt5==5.15.9
 python-vlc==3.0.18121

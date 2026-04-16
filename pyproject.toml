@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "fire-video"
+version = "1.0.0"
+description = "Video Processing Toolkit for timestamps, cutting and joining competition footage"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+dependencies = [
+    "yt-dlp>=2023.10.13",
+]
+
+[project.optional-dependencies]
+gui = [
+    "PyQt5==5.15.9",
+    "python-vlc==3.0.18121",
+]
+
+[tool.setuptools]
+# Scripts use hyphens in filenames; install via pip install -e . or -e ".[gui]"
+# to get dependencies. Run scripts directly with python3 <script>.py
+py-modules = []

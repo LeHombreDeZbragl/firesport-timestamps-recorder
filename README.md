@@ -12,84 +12,138 @@ Four tools for recording timestamps, downloading YouTube videos, cutting/joining
 
 Setup
 -----
-**Requirements:** Python 3.8+, FFmpeg, VLC (for GUI)
 
+### Step 1: Install system dependencies
+
+**FFmpeg** (required by all tools):
+
+| OS | Command |
+|----|---------|
+| Linux | `sudo apt-get install ffmpeg` |
+| macOS | `brew install ffmpeg` |
+| Windows | `choco install ffmpeg` or [download](https://ffmpeg.org/download.html) |
+
+**VLC** (required only for GUI recorder):
+
+| OS | Command |
+|----|---------|
+| Linux | `sudo apt-get install vlc` |
+| macOS | `brew install --cask vlc` |
+| Windows | `choco install vlc` or [download](https://www.videolan.org/) |
+
+### Step 2: Set up Python environment
+
+Choose your setup method:
+
+**Option A: Automated (recommended)**
 ```bash
-# Quick setup with Makefile
-make setup
+# CLI tools only
+python3 install.py
 
-# Or install manually
-pip install -r requirements.txt        # CLI only (yt-dlp)
-pip install -r requirements_gui.txt    # GUI (PyQt5, python-vlc)
+# CLI + GUI recorder
+python3 install.py --gui
 ```
 
-Quick Start (Makefile)
-----------------------
-**Recommended:** Use Makefile commands for easier workflow.
+**Option B: With Makefile (Linux/macOS only)**
+```bash
+make setup
+```
+
+**Option C: Manual**
+```bash
+python3 -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+pip install -r requirements.txt   # CLI only
+pip install -r requirements_gui.txt  # CLI + GUI
+```
+
+Quick Start
+-----------
+
+Choose your preferred interface and run the commands below. All three methods do the same thing.
+
+### Makefile (Linux/macOS)
 
 ```bash
-# See all commands
+# Show all available commands
 make help
 
-# Download YouTube video
-make download URL='https://youtube.com/watch?v=xyz' NAME=myvideo CHUNK=10
-
-# Record timestamps (GUI)
+# Workflow: download → record → cut → output
+make download URL='https://youtube.com/watch?v=xyz' NAME=myvideo
 make gui
+# Load myvideo.mp4 → mark starts/ends → export timestamps.txt
+make cut SOURCE=myvideo.mp4 TIMES=timestamps.txt
+# Output: out-parts/ folder + final_myvideo.mp4
 
-# Cut video by timestamps
-make cut SOURCE=video.mp4 TIMES=timestamps.txt
-
-# Cut and sort by time (competition mode)
-make cut SOURCE=video.mp4 TIMES=timestamps.txt SORT=1
-
-# Join parts manually
-make join FOLDER=path/to/parts OUTPUT=final.mp4
-
-# Add timer overlay to a video
-make timer SOURCE=video.mp4
-make timer SOURCE=video.mp4 START=00:00:05.000 END=00:00:20.000
-make timer SOURCE=video.mp4 START=00:00:05.000 END_REL=00:00:15.000
+# Individual commands:
+make download URL='https://youtube.com/watch?v=xyz' NAME=myvideo  # Download video
+make gui                                                           # Record timestamps (GUI)
+make cut SOURCE=video.mp4 TIMES=timestamps.txt                    # Cut by timestamps
+make cut SOURCE=video.mp4 TIMES=timestamps.txt SORT=1             # Cut + sort by time
+make join FOLDER=path/to/parts OUTPUT=final.mp4                   # Join parts
+make timer SOURCE=video.mp4                                       # Add timer overlay
+make timer SOURCE=video.mp4 START=00:00:05.000 END=00:00:20.000   # Timer with time range
 ```
 
-Quick Start (Direct Python)
-----------------------------
+---
+
+### Windows (run.bat)
+
+```bat
+REM Show help
+run.bat
+REM or
+run.bat help
+
+REM Workflow: download → record → cut → output
+run.bat download -u https://youtube.com/watch?v=xyz -n myvideo
+run.bat gui
+REM Load myvideo.mp4 → mark starts/ends → export timestamps.txt
+run.bat cut -s myvideo.mp4 -t timestamps.txt
+REM Output: out-parts\ folder + final_myvideo.mp4
+
+REM Individual commands:
+run.bat download -u https://youtube.com/watch?v=xyz -n myvideo      :: Download video
+run.bat gui                                                          :: Record timestamps (GUI)
+run.bat cut -s video.mp4 -t timestamps.txt                           :: Cut by timestamps
+run.bat cut -s video.mp4 -t timestamps.txt -z                        :: Cut + sort by time
+run.bat join --parts path\to\parts --out final.mp4                   :: Join parts
+run.bat timer -s video.mp4                                           :: Add timer overlay
+run.bat timer -s video.mp4 --start 00:00:05.000 --end 00:00:20.000  :: Timer with time range
+```
+
+---
+
+### Direct Python (All platforms)
+
 ```bash
-
-# Download YouTube
-python3 firetimer-ytdownload.py -u <URL> -n <name>
-
-# Record timestamps
+# Workflow: download → record → cut → output
+python3 firetimer-ytdownload.py -u https://youtube.com/watch?v=xyz -n myvideo
 python3 video_timestamp_recorder.py
+# Load myvideo.mp4 → mark starts/ends → export timestamps.txt
+python3 firetimer-cutvid.py -s myvideo.mp4 -t timestamps.txt
+# Output: out-parts/ folder + final_myvideo.mp4
 
-# Cut video
-python3 firetimer-cutvid.py -s video.mp4 -t timestamps.txt
-
-# Join parts
-python3 firetimer-joinvids.py --parts path/to/parts
-
-# Add timer overlay
-python3 add-timer.py -s video.mp4
-python3 add-timer.py -s video.mp4 --start 00:00:05.000 --end 00:00:20.000
+# Individual commands:
+python3 firetimer-ytdownload.py -u https://youtube.com/watch?v=xyz -n myvideo     # Download video
+python3 video_timestamp_recorder.py                                                # Record timestamps (GUI)
+python3 firetimer-cutvid.py -s video.mp4 -t timestamps.txt                         # Cut by timestamps
+python3 firetimer-cutvid.py -s video.mp4 -t timestamps.txt -z                      # Cut + sort by time
+python3 firetimer-joinvids.py --parts path/to/parts --out final.mp4                # Join parts
+python3 add-timer.py -s video.mp4                                                  # Add timer overlay
+python3 add-timer.py -s video.mp4 --start 00:00:05.000 --end 00:00:20.000          # Timer with time range
 ```
 
-Workflow Example
-----------------
+---
+
+#### Show all available commands
+
+**Makefile:**
 ```bash
-
-# 0. Optionally download from YouTube first
-make download URL='https://youtube.com/...' NAME=myvideo
-# Output: myvideo/ folder with in-parts/ + myvideo.mp4
-
-# 1. Record timestamps using GUI
-make gui
-# Load video → mark segments (S/E keys) → export timestamps.txt
-
-# 2. Cut video into segments with overlays
-make cut SOURCE=video.mp4 TIMES=timestamps.txt
-# Output: out-parts/ folder + final_out_video.mp4
-
+make help
 ```
+
+**Windows/Direct Python:** See [Options](#options) section below.
 
 Timestamp File Format
 ---------------------
@@ -135,9 +189,9 @@ Folder Structure
 
 Troubleshooting
 ---------------
-- Install FFmpeg: `sudo apt install ffmpeg` (Linux) / `brew install ffmpeg` (macOS)
-- Install VLC: `sudo apt install vlc` (Linux) / `brew install vlc` (macOS)
-- Run `--help` on any script for detailed options
+- FFmpeg not found: see Step 1 above for install instructions per OS
+- VLC not found: required only for GUI — see Step 1 above
+- Run `--help` on any script for detailed options (e.g. `python3 firetimer-cutvid.py --help` or `make cut --help`)
 
 License
 -------
