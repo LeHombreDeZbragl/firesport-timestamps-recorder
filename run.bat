@@ -2,6 +2,10 @@
 :: FIRE Video Processing Toolkit - Windows launcher
 :: Usage: run.bat <command> [options]
 
+chcp 65001 >nul
+set PYTHONIOENCODING=utf-8
+set PYTHONUTF8=1
+
 setlocal enabledelayedexpansion
 
 set "SCRIPT_DIR=%~dp0"

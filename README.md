@@ -10,6 +10,13 @@ Four tools for recording timestamps, downloading YouTube videos, cutting/joining
 - `firetimer-joinvids.py` — Fast FFmpeg concat joiner
 - `add-timer.py` — Add a running timer overlay to any video
 
+**Known issues:**
+- `firetimer-ytdownload.py` on *Windows* is not working reliably.
+- Some overlay diacritics may not render correctly on *Linux*.
+- `video_timestamp_recorder.py` has sound problems on *Linux*.
+- *Linux* tested only in ubuntu WSL2.0.
+- *MacOS* not tested.
+
 Setup
 -----
 
@@ -62,6 +69,8 @@ brew install python3
 ### Step 2: Set up Python environment
 
 **Windows:**
+Make sure you are running this in admin CMD or PowerShell.
+
 ```bat
 setup.bat
 ```
@@ -82,8 +91,7 @@ make setup
 
 **All platforms - Manual:**
 ```bash
-python3 -m venv venv                     # Linux/macOS
-python -m venv venv                      # Windows (use python, not python3)
+python3 -m venv venv
 
 source venv/bin/activate                 # Linux/macOS
 venv\Scripts\activate                    # Windows
@@ -141,6 +149,8 @@ make timer SOURCE=video.mp4 START=00:00:05.000 END=00:00:20.000 OUTPUT=out.mp4
 REM Show help
 run.bat
 
+REM NOTE: The download command has known issues on Windows and may not work reliably.
+REM       Consider using yt-dlp directly or downloading via a browser extension instead.
 REM Workflow: download → record → cut → output
 run.bat download -u https://youtube.com/watch?v=xyz -n myvideo
 run.bat gui
@@ -149,14 +159,16 @@ run.bat cut -s myvideo.mp4 -t timestamps.txt
 REM Output: out-parts\ folder + final_myvideo.mp4
 
 REM Individual commands:
-run.bat download -u https://youtube.com/watch?v=xyz -n myvideo                       
+run.bat download -u "https://youtube.com/watch?v=xyz" -n myvideo                       
 REM Download video
-run.bat download -u https://youtube.com/watch?v=xyz -n myvideo -f myfolder -c 10     
+run.bat download -u "https://youtube.com/watch?v=xyz" -n myvideo -f myfolder -c 10     
 REM Download to folder, 10min chunks
 run.bat gui                                                                           
 REM Record timestamps (GUI)
 run.bat cut -s video.mp4 -t timestamps.txt                                            
 REM Cut by timestamps
+run.bat cut -s video.mp4 -t timestamps-muzi.txt,timestamps-zeny.txt                  
+REM Cut with multiple timestamp files (comma-delimited)
 run.bat cut -s video.mp4 -t timestamps.txt -z                                         
 REM Cut + sort by time
 run.bat join --parts path\to\parts --out final.mp4                                    
@@ -176,8 +188,6 @@ REM Timer with custom output
 ### Direct Python (All platforms)
 
 ```bash
-# Windows: use 'python' instead of 'python3'
-# Linux/macOS: use 'python3'
 
 # Workflow: download → record → cut → output
 python3 firetimer-ytdownload.py -u https://youtube.com/watch?v=xyz -n myvideo
@@ -195,6 +205,8 @@ python3 video_timestamp_recorder.py
 # Record timestamps (GUI)
 python3 firetimer-cutvid.py -s video.mp4 -t timestamps.txt                                       
 # Cut by timestamps
+python3 firetimer-cutvid.py -s video.mp4 -t timestamps-muzi.txt,timestamps-zeny.txt              
+# Cut with multiple timestamp files (comma-delimited)
 python3 firetimer-cutvid.py -s video.mp4 -t timestamps.txt -z                                    
 # Cut + sort by time
 python3 firetimer-joinvids.py --parts path/to/parts --out final.mp4                              
@@ -243,7 +255,7 @@ Options
 
 **Cut Video:**
 - `-s, --source` (required) — video file
-- `-t, --times` (required) — timestamps file
+- `-t, --times` (required) — timestamps file(s), comma-delimited for multiple (e.g. `-t file1.txt,file2.txt`)
 - `-z` — sort by final time (max of LP/PP) and add placement labels (1.místo, 2.místo, etc.)
 
 **Join Video:**
@@ -269,6 +281,7 @@ Troubleshooting
   - Windows: Download from [python.org](https://www.python.org/), check "Add Python to PATH"
   - Linux: `sudo apt-get install python3`
   - macOS: `brew install python3`
+- **python3 command not found:** Try only python. 
 - **Python version mismatch:** Project recommends Python 3.13, but 3.8+ is supported. If you have 3.12, it will work fine.
 - **FFmpeg not found:** See Step 1 above for install instructions per OS
 - **VLC not found:** Required only for GUI — see Step 1 above

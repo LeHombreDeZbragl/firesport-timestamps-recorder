@@ -26,6 +26,9 @@ Examples:
   # Cut video using timestamps.txt
   python3 firetimer-cutvid.py -s myvideo.mp4 -t timestamps.txt
   
+  # Cut multiple timestamp files at once (comma-delimited)
+  python3 firetimer-cutvid.py -s myvideo.mp4 -t timestamps-muzi.txt,timestamps-zeny.txt
+  
   # Cut video with custom timestamps file
   python3 firetimer-cutvid.py --source recording.mp4 --times segments.txt
 
@@ -289,6 +292,39 @@ def sanitize_filename(title):
     # Limit length and ensure it's not empty
     filename = filename[:50] if filename else "untitled"
     return filename
+
+def find_system_font():
+    """Find a usable system font file for FFmpeg drawtext."""
+    candidates = []
+    if sys.platform == "win32":
+        font_dir = os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "Fonts")
+        for name in ["arial.ttf", "calibri.ttf", "verdana.ttf", "tahoma.ttf"]:
+            candidates.append(os.path.join(font_dir, name))
+    elif sys.platform == "darwin":
+        candidates = [
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/Library/Fonts/Arial.ttf",
+            "/System/Library/Fonts/Geneva.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+        ]
+    else:  # Linux and others
+        candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return None
+
+def ff_escape_fontfile(path):
+    """Escape a font file path for use in an FFmpeg drawtext filter option."""
+    path = path.replace("\\", "/")  # use forward slashes
+    path = path.replace(":", "\\:")  # escape colon in Windows drive letter (e.g. C:)
+    return path
 
 def get_video_duration(video_path):
     """Get video duration in seconds using ffprobe"""
@@ -756,7 +792,13 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     
     # Join all filters
     vf = ",".join(filters)
-    
+
+    # Inject fontfile into all drawtext filters for cross-platform font support
+    font_file = find_system_font()
+    if font_file:
+        font_arg = f"fontfile='{ff_escape_fontfile(font_file)}':"
+        vf = vf.replace("drawtext=", f"drawtext={font_arg}")
+
     # Build ffmpeg command
     cmd = [
         "ffmpeg",
@@ -794,11 +836,12 @@ Output:
 
 Examples:
   python3 firetimer-cutvid.py -s myvideo.mp4 -t timestamps.txt
+  python3 firetimer-cutvid.py -s myvideo.mp4 -t timestamps-muzi.txt,timestamps-zeny.txt
   python3 firetimer-cutvid.py --source recording.mp4 --times segments.txt -z
         """
     )
     parser.add_argument("--source", "-s", required=True, help="Video source: local MP4 file path")
-    parser.add_argument("--times", "-t", required=True, nargs="+", help="Timestamps file(s) - can specify multiple files")
+    parser.add_argument("--times", "-t", required=True, nargs="+", help="Timestamps file(s) - space-separated or comma-delimited. E.g.: -t file1.txt file2.txt  or  -t file1.txt,file2.txt")
     parser.add_argument("-z", action="store_true", help="Sort by final time (max of LP/PP) and add placement labels (1.místo, 2.místo, etc.)")
     args = parser.parse_args()
 
@@ -809,8 +852,12 @@ Examples:
         print(f"ERROR: source file does not exist: {args.source}")
         sys.exit(1)
 
-    # Handle multiple timestamp files
-    timestamp_files = args.times if isinstance(args.times, list) else [args.times]
+    # Handle multiple timestamp files (supports space-separated nargs and comma-delimited)
+    raw_files = args.times if isinstance(args.times, list) else [args.times]
+    timestamp_files = []
+    for f in raw_files:
+        timestamp_files.extend(f.split(","))
+    timestamp_files = [f.strip() for f in timestamp_files if f.strip()]
     print(f"📋 Processing {len(timestamp_files)} timestamp file(s)")
     
     final_videos = []  # Store paths to final videos from each timestamp file
@@ -967,7 +1014,7 @@ Examples:
         # Automatically call joinvids.py to join the cut parts
         print("\n🔗 Auto-joining cut parts...")
         try:
-            joinvids_script = os.path.join(os.path.dirname(__file__), "firetimer-joinvids.py")
+            joinvids_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "firetimer-joinvids.py")
             if not os.path.exists(joinvids_script):
                 print(f"⚠️  Warning: firetimer-joinvids.py not found at {joinvids_script}")
                 print("   You can manually join the parts later.")
