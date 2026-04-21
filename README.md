@@ -5,6 +5,7 @@ Four tools for recording timestamps, downloading YouTube videos, cutting/joining
 
 **Tools:**
 - `firetimer-ytdownload.py` — Download YouTube videos
+  - uses `yt-dlp` under the hood. If this script doesn't work on your system, you can use `yt-dlp` directly - this can mean directly from command line or via Open video Downloader tool or Stacher.
 - `video_timestamp_recorder.py` — GUI for frame-accurate timestamps
 - `firetimer-cutvid.py` — Cut by timestamps, add title+timer overlays
 - `firetimer-joinvids.py` — Fast FFmpeg concat joiner
@@ -75,6 +76,9 @@ Make sure you are running this in admin CMD or PowerShell.
 setup.bat
 ```
 *Interactive script that detects Python and asks if you want GUI support.*
+
+Check `yt-dlp --version` to verify yt-dlp installation.
+If it's not found, install with `winget install yt-dlp` also in admin CMD/PowerShell.
 
 **Linux/macOS:**
 
@@ -159,9 +163,9 @@ run.bat cut -s myvideo.mp4 -t timestamps.txt
 REM Output: out-parts\ folder + final_myvideo.mp4
 
 REM Individual commands:
-run.bat download -u "https://youtube.com/watch?v=xyz" -n myvideo                       
+run.bat download -u https://youtube.com/watch?v=xyz -n myvideo                       
 REM Download video
-run.bat download -u "https://youtube.com/watch?v=xyz" -n myvideo -f myfolder -c 10     
+run.bat download -u https://youtube.com/watch?v=xyz -n myvideo -f myfolder -c 10     
 REM Download to folder, 10min chunks
 run.bat gui                                                                           
 REM Record timestamps (GUI)
@@ -285,9 +289,6 @@ Troubleshooting
 - **Python version mismatch:** Project recommends Python 3.13, but 3.8+ is supported. If you have 3.12, it will work fine.
 - **FFmpeg not found:** See Step 1 above for install instructions per OS
 - **VLC not found:** Required only for GUI — see Step 1 above
-- **Download command fails with "unrecognized arguments":** On Windows, URLs with special characters (like dashes `-`) need to be quoted:
-  - ❌ `run.bat download -u https://youtube.com/watch?v=-xyz -n video` (fails)
-  - ✅ `run.bat download -u "https://youtube.com/watch?v=-xyz" -n video` (works)
 - **yt-dlp JavaScript runtime warning:** You may see a warning about "No supported JavaScript runtime could be found" during downloads. This is harmless — downloads will still work. To eliminate the warning, install Node.js from [nodejs.org](https://nodejs.org/)
 - **Run `--help` on any script** for detailed options (e.g. `python3 firetimer-cutvid.py --help` or `make cut --help`)
 
