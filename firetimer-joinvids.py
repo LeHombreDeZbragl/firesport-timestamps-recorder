@@ -44,12 +44,15 @@ import argparse
 import subprocess
 import os
 import sys
+import json
 
 def check_deps():
     import shutil
     if shutil.which("ffmpeg") is None:
         print("ERROR: ffmpeg not found in PATH. Install ffmpeg and ensure it's on PATH.")
         sys.exit(1)
+
+SUPPORTED_FORMATS = {'.mp4', '.mov'}
 
 def collect_videos(folder):
     if not os.path.exists(folder):
@@ -58,12 +61,26 @@ def collect_videos(folder):
     vids = sorted([
         os.path.join(folder, f)
         for f in os.listdir(folder)
-        if f.lower().endswith(".mp4")
+        if os.path.splitext(f.lower())[1] in SUPPORTED_FORMATS
     ])
     if not vids:
-        print(f"No .mp4 files found in {folder}")
+        print(f"No supported video files ({', '.join(sorted(SUPPORTED_FORMATS))}) found in {folder}")
         sys.exit(1)
     return vids
+
+def get_video_dimensions(path):
+    """Return (width, height) of the first video stream using ffprobe."""
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height",
+        "-of", "json",
+        path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    data = json.loads(result.stdout)
+    stream = data["streams"][0]
+    return stream["width"], stream["height"]
 
 def normalize_videos(video_list):
     normalized = []
@@ -93,46 +110,89 @@ def normalize_videos(video_list):
     return normalized, temps
 
 def join_videos(video_list, output_file="output.mp4"):
-    temp_list = "_firejoiner_list.txt"
-    normalized_videos, temp_artifacts = normalize_videos(video_list)
-    
-    # Ensure output directory exists
     output_dir = os.path.dirname(os.path.abspath(output_file))
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    
-    with open(temp_list, "w", encoding="utf-8") as f:
-        for v in normalized_videos:
-            f.write(f"file '{os.path.abspath(v)}'\n")
-    
-    print(f"🔗 Joining {len(video_list)} parts...")
     output_path = os.path.abspath(output_file)
-    print(f"📝 Output path: {output_path}")
-    
-    cmd = [
-        "ffmpeg",
-        "-fflags", "+genpts",  # regenerate timestamps to keep DTS monotonic
-        "-f", "concat", "-safe", "0",
-        "-i", temp_list,
-        "-c", "copy",  # Copy streams without re-encoding (much faster!)
-        "-avoid_negative_ts", "make_zero",
-        "-max_interleave_delta", "0",
-        "-y", output_path
-    ]
-    
+
+    needs_encode = any(not v.lower().endswith('.mp4') for v in video_list)
+
+    if needs_encode:
+        n = len(video_list)
+        # Use the first clip's dimensions as the target.
+        # Scale + pad everything else to match so concat doesn't choke on
+        # mixed portrait/landscape clips (common with iPhone footage).
+        target_w, target_h = get_video_dimensions(video_list[0])
+        print(f"\u26a0\ufe0f  Non-MP4 files detected \u2014 re-encoding all {n} clips to {target_w}\u00d7{target_h}...")
+        print(f"\U0001f4dd Output path: {output_path}")
+
+        cmd = ["ffmpeg"]
+        for v in video_list:
+            cmd += ["-i", v]
+
+        # Scale each clip to the target size; pad with black if aspect ratio differs
+        filter_parts = []
+        for i in range(n):
+            filter_parts.append(
+                f"[{i}:v]scale={target_w}:{target_h}:"
+                f"force_original_aspect_ratio=decrease,"
+                f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}]"
+            )
+        concat_inputs = "".join(f"[v{i}][{i}:a]" for i in range(n))
+        filter_parts.append(f"{concat_inputs}concat=n={n}:v=1:a=1[v][a]")
+        filter_complex = ";".join(filter_parts)
+
+        cmd += [
+            "-filter_complex", filter_complex,
+            "-map", "[v]",
+            "-map", "[a]",
+            "-c:v", "libx264",
+            "-crf", "23",
+            "-preset", "medium",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-ar", "48000",
+            "-ac", "2",
+            "-y", output_path
+        ]
+    else:
+        # All native MP4 — fast path: fix timestamps then stream-copy
+        temp_list = "_firejoiner_list.txt"
+        ready_list, encode_temps = normalize_videos(video_list)
+        try:
+            with open(temp_list, "w", encoding="utf-8") as f:
+                for v in ready_list:
+                    f.write(f"file '{os.path.abspath(v)}'\n")
+
+            print(f"🔗 Joining {len(video_list)} parts (fast copy)...")
+            print(f"📝 Output path: {output_path}")
+
+            cmd = [
+                "ffmpeg",
+                "-f", "concat", "-safe", "0",
+                "-i", temp_list,
+                "-c", "copy",
+                "-y", output_path
+            ]
+            subprocess.run(cmd, check=True)
+            print(f"✅ Final video saved as: {output_path}")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ FFmpeg error: {e}")
+            raise
+        finally:
+            if os.path.exists(temp_list):
+                os.remove(temp_list)
+            for t in encode_temps:
+                if os.path.exists(t):
+                    os.remove(t)
+        return
+
     try:
         subprocess.run(cmd, check=True)
         print(f"✅ Final video saved as: {output_path}")
     except subprocess.CalledProcessError as e:
         print(f"❌ FFmpeg error: {e}")
-        print(f"💡 Try checking if the output directory is writable: {output_dir}")
         raise
-    finally:
-        if os.path.exists(temp_list):
-            os.remove(temp_list)
-        for t in temp_artifacts:
-            if os.path.exists(t):
-                os.remove(t)
 
 def main():
     parser = argparse.ArgumentParser(
