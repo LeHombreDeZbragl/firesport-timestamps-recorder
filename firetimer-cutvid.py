@@ -131,18 +131,20 @@ def validate_timestamps_file(path, video_path=None):
             if is_empty_or_zero(zacatek):
                 warnings.append(f"Line {line_number}: začátek is missing or zero{title_info}")
             
-            if is_empty_or_zero(split_start):
-                warnings.append(f"Line {line_number}: start is missing or zero{title_info}")
+            # Note: split_start (start) CAN be zero - in that case, no timer/timestamps are shown
+            # Only validate if not zero
+            # split_start validation skipped - it's optional and can be zero
             
             if is_empty_or_zero(konec):
                 warnings.append(f"Line {line_number}: konec is missing or zero{title_info}")
             
             # Validate timestamp ordering (only if all required timestamps are present)
-            if not is_empty_or_zero(zacatek) and not is_empty_or_zero(split_start) and not is_empty_or_zero(konec):
+            # Note: split_start can be zero, so we skip the check for it
+            if not is_empty_or_zero(zacatek) and not is_empty_or_zero(konec):
                 try:
                     # Convert timestamps to seconds for comparison
                     ts_zacatek = timestamp_to_seconds(zacatek)
-                    ts_start = timestamp_to_seconds(split_start)
+                    ts_start = timestamp_to_seconds(split_start) if not is_empty_or_zero(split_start) else None
                     ts_kos = timestamp_to_seconds(split_kos) if not is_empty_or_zero(split_kos) else None
                     ts_voda = timestamp_to_seconds(split_voda) if not is_empty_or_zero(split_voda) else None
                     ts_kohout = timestamp_to_seconds(split_kohout) if not is_empty_or_zero(split_kohout) else None
@@ -153,12 +155,12 @@ def validate_timestamps_file(path, video_path=None):
                     ts_pp = timestamp_to_seconds(split_pp) if not is_empty_or_zero(split_pp) else None
                     ts_konec = timestamp_to_seconds(konec)
                     
-                    # Rule 1: začátek must be the lowest
-                    if ts_start <= ts_zacatek:
+                    # Rule 1: začátek must be the lowest (only check if start is not zero)
+                    if ts_start is not None and ts_start <= ts_zacatek:
                         warnings.append(f"Line {line_number}: start must be greater than začátek{title_info}")
                     
-                    # Rule 2: start < koš (if koš exists)
-                    if ts_kos is not None and ts_kos <= ts_start:
+                    # Rule 2: start < koš (if both exist and start is not zero)
+                    if ts_start is not None and ts_kos is not None and ts_kos <= ts_start:
                         warnings.append(f"Line {line_number}: koš must be greater than start{title_info}")
                     
                     # Rule 3: koš < voda (if both exist)
@@ -388,76 +390,91 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
             freeze_extra = max(0.0, min_required - duration)
     total_duration = duration + freeze_extra
 
-    # Calculate timer offset and stop time from splits
+    # Check if we should show timer (when start is not empty/zero)
+    show_timer = False
     timer_offset = 0.0
     timer_stop_time = duration  # Default: stop at end
     
     if splits and 'start' in splits:
         start_split_timestamp = splits['start'].strip()
-        # Convert start split absolute timestamp to seconds
-        try:
-            start_split_seconds = timestamp_to_seconds(start_split_timestamp)
-            # Calculate offset: how many seconds after začátek is the "start" split
-            timer_offset = start_split_seconds - start_seconds
-            
-            # Find the maximum of LP and PP to determine when timer stops
-            lp_seconds = 0
-            pp_seconds = 0
-            
-            if 'LP' in splits and splits['LP'].strip():
-                try:
-                    lp_seconds = timestamp_to_seconds(splits['LP'].strip())
-                except:
-                    pass
-            
-            if 'PP' in splits and splits['PP'].strip():
-                try:
-                    pp_seconds = timestamp_to_seconds(splits['PP'].strip())
-                except:
-                    pass
-            
-            # Timer stops at the maximum of LP and PP (relative to začátek)
-            # If both are missing, timer doesn't stop (runs until end)
-            if lp_seconds > 0 or pp_seconds > 0:
-                max_split_seconds = max(lp_seconds, pp_seconds)
-                timer_stop_time = max_split_seconds - start_seconds
-        except:
-            timer_offset = 0.0
+        # Check if start is not empty and not zero
+        if start_split_timestamp and start_split_timestamp != "00:00:00.000":
+            show_timer = True
+            # Convert start split absolute timestamp to seconds
+            try:
+                start_split_seconds = timestamp_to_seconds(start_split_timestamp)
+                # Calculate offset: how many seconds after začátek is the "start" split
+                timer_offset = start_split_seconds - start_seconds
+                
+                # Find the maximum of LP and PP to determine when timer stops
+                lp_seconds = 0
+                pp_seconds = 0
+                
+                if 'LP' in splits and splits['LP'].strip():
+                    try:
+                        lp_seconds = timestamp_to_seconds(splits['LP'].strip())
+                    except:
+                        pass
+                
+                if 'PP' in splits and splits['PP'].strip():
+                    try:
+                        pp_seconds = timestamp_to_seconds(splits['PP'].strip())
+                    except:
+                        pass
+                
+                # Timer stops at the maximum of LP and PP (relative to začátek)
+                # If both are missing, timer doesn't stop (runs until end)
+                if lp_seconds > 0 or pp_seconds > 0:
+                    max_split_seconds = max(lp_seconds, pp_seconds)
+                    timer_stop_time = max_split_seconds - start_seconds
+            except:
+                timer_offset = 0.0
+                show_timer = False
     
     # Calculate the final timer value (when it stops)
     final_timer_value = timer_stop_time - timer_offset
     
-    # Build timer text with conditions:
+    # Build timer text with conditions (only if show_timer is True):
     # - Before start (t < timer_offset): show 00.00
     # - From start to stop (timer_offset <= t < timer_stop_time): show increasing time
     # - After stop (t >= timer_stop_time): show final value (frozen)
     
-    # Current time relative to start
-    time_from_start = f"t-{timer_offset}"
-    
-    # Conditional timer value:
-    # if t < timer_offset: 0
-    # elif t >= timer_stop_time: final_value
-    # else: t - timer_offset
-    timer_value = f"if(lt(t\\,{timer_offset})\\,0\\,if(gte(t\\,{timer_stop_time})\\,{final_timer_value}\\,{time_from_start}))"
-    
-    # Split timer into individual digit components for fixed-width display
-    seconds_total = f"eif\\:{timer_value}\\:d"
-    seconds_tens = f"eif\\:{timer_value}/10\\:d"
-    seconds_ones = f"eif\\:mod({timer_value}\\,10)\\:d"
-    centiseconds_raw = f"mod({timer_value}*100\\,100)"
-    centiseconds_tens = f"eif\\:{centiseconds_raw}/10\\:d"
-    centiseconds_ones = f"eif\\:mod({centiseconds_raw}\\,10)\\:d"
-    
-    # Individual text elements for each part
-    timer_seconds_tens = f"%{{{seconds_tens}}}"
-    timer_seconds_ones = f"%{{{seconds_ones}}}"
-    timer_colon = "\\:"
-    timer_centis_tens = f"%{{{centiseconds_tens}}}"
-    timer_centis_ones = f"%{{{centiseconds_ones}}}"
-    
-    # Condition for showing tens digit (only when >= 10)
-    show_seconds_tens = f"gte({timer_value}\\,10)"
+    if show_timer:
+        # Current time relative to start
+        time_from_start = f"t-{timer_offset}"
+        
+        # Conditional timer value:
+        # if t < timer_offset: 0
+        # elif t >= timer_stop_time: final_value
+        # else: t - timer_offset
+        timer_value = f"if(lt(t\\,{timer_offset})\\,0\\,if(gte(t\\,{timer_stop_time})\\,{final_timer_value}\\,{time_from_start}))"
+        
+        # Split timer into individual digit components for fixed-width display
+        seconds_total = f"eif\\:{timer_value}\\:d"
+        seconds_tens = f"eif\\:{timer_value}/10\\:d"
+        seconds_ones = f"eif\\:mod({timer_value}\\,10)\\:d"
+        centiseconds_raw = f"mod({timer_value}*100\\,100)"
+        centiseconds_tens = f"eif\\:{centiseconds_raw}/10\\:d"
+        centiseconds_ones = f"eif\\:mod({centiseconds_raw}\\,10)\\:d"
+        
+        # Individual text elements for each part
+        timer_seconds_tens = f"%{{{seconds_tens}}}"
+        timer_seconds_ones = f"%{{{seconds_ones}}}"
+        timer_colon = "\\:"
+        timer_centis_tens = f"%{{{centiseconds_tens}}}"
+        timer_centis_ones = f"%{{{centiseconds_ones}}}"
+        
+        # Condition for showing tens digit (only when >= 10)
+        show_seconds_tens = f"gte({timer_value}\\,10)"
+    else:
+        # When no timer, these variables are not used, but we need to define them to avoid errors
+        timer_value = "0"
+        timer_seconds_tens = ""
+        timer_seconds_ones = ""
+        timer_colon = ""
+        timer_centis_tens = ""
+        timer_centis_ones = ""
+        show_seconds_tens = "0"
     
     # Calculate when koš appears (for title slide-out animation)
     # Title should start sliding out 1 second BEFORE koš appears
@@ -566,48 +583,50 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     # Timer overlay (bottom right) - separate elements to prevent width glitching
     # Base position for rightmost edge
     # Animate: slide in at start (same timing as title), slide down 1 second before end of video
-    timer_fontsize = 80
-    timer_slide_in_start = 0.2  # Same as title
-    timer_slide_in_duration = 1.0  # Same as title
-    timer_slide_in_end = timer_slide_in_start + timer_slide_in_duration
-    timer_slide_out_start = total_duration - 1.0  # Start sliding out 1 second before end
-    timer_slide_out_duration = 1.0
-    timer_slide_out_end = timer_slide_out_start + timer_slide_out_duration
-    # Timer Y animation: slide in from bottom, stay visible, then slide down at end
-    # Before slide-in: h+100, During slide-in: animate to h-th-40, Stay visible, Then slide out to h+100
-    timer_y = f"if(lt(t\\,{timer_slide_in_start})\\,h+100\\,if(lt(t\\,{timer_slide_in_end})\\,h+100-((t-{timer_slide_in_start})/{timer_slide_in_duration})*(140+th)\\,if(lt(t\\,{timer_slide_out_start})\\,h-th-40\\,if(gte(t\\,{timer_slide_out_end})\\,h+100\\,h-th-40+((t-{timer_slide_out_start})/{timer_slide_out_duration})*(140+th)))))"
+    if show_timer:
+        timer_fontsize = 80
+        timer_slide_in_start = 0.2  # Same as title
+        timer_slide_in_duration = 1.0  # Same as title
+        timer_slide_in_end = timer_slide_in_start + timer_slide_in_duration
+        timer_slide_out_start = total_duration - 1.0  # Start sliding out 1 second before end
+        timer_slide_out_duration = 1.0
+        timer_slide_out_end = timer_slide_out_start + timer_slide_out_duration
+        # Timer Y animation: slide in from bottom, stay visible, then slide down at end
+        # Before slide-in: h+100, During slide-in: animate to h-th-40, Stay visible, Then slide out to h+100
+        timer_y = f"if(lt(t\\,{timer_slide_in_start})\\,h+100\\,if(lt(t\\,{timer_slide_in_end})\\,h+100-((t-{timer_slide_in_start})/{timer_slide_in_duration})*(140+th)\\,if(lt(t\\,{timer_slide_out_start})\\,h-th-40\\,if(gte(t\\,{timer_slide_out_end})\\,h+100\\,h-th-40+((t-{timer_slide_out_start})/{timer_slide_out_duration})*(140+th)))))"
+        
+        # Position elements from right to left with fixed positions to prevent jumping
+        # Using fixed pixel positions from the right edge
+        base_x = 190  # Base offset from right edge for the rightmost digit
+        
+        # Centiseconds ones digit (rightmost)
+        filters.append(
+            f"drawtext=text='{timer_centis_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x}:y={timer_y}"
+        )
+        
+        # Centiseconds tens digit
+        filters.append(
+            f"drawtext=text='{timer_centis_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 50}:y={timer_y}"
+        )
+        
+        # Colon separator
+        filters.append(
+            f"drawtext=text='{timer_colon}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 76}:y={timer_y}"
+        )
+        
+        # Seconds ones digit
+        filters.append(
+            f"drawtext=text='{timer_seconds_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 124}:y={timer_y}"
+        )
+        
+        # Seconds tens digit (only shown when >= 10)
+        filters.append(
+            f"drawtext=text='{timer_seconds_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 174}:y={timer_y}:enable='{show_seconds_tens}'"
+        )
     
-    # Position elements from right to left with fixed positions to prevent jumping
-    # Using fixed pixel positions from the right edge
-    base_x = 190  # Base offset from right edge for the rightmost digit
-    
-    # Centiseconds ones digit (rightmost)
-    filters.append(
-        f"drawtext=text='{timer_centis_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x}:y={timer_y}"
-    )
-    
-    # Centiseconds tens digit
-    filters.append(
-        f"drawtext=text='{timer_centis_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 50}:y={timer_y}"
-    )
-    
-    # Colon separator
-    filters.append(
-        f"drawtext=text='{timer_colon}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 76}:y={timer_y}"
-    )
-    
-    # Seconds ones digit
-    filters.append(
-        f"drawtext=text='{timer_seconds_ones}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 124}:y={timer_y}"
-    )
-    
-    # Seconds tens digit (only shown when >= 10)
-    filters.append(
-        f"drawtext=text='{timer_seconds_tens}':fontcolor=white:fontsize={timer_fontsize}:x=w-{base_x + 174}:y={timer_y}:enable='{show_seconds_tens}'"
-    )
-    
-    # Add split overlays (if splits are provided)
-    if splits:
+    # Add split overlays (if splits are provided and timer is enabled)
+    # When start is zero (no timer), we also skip all timestamp displays
+    if show_timer and splits:
         # Get start split timestamp for calculating relative times
         start_split_timestamp = splits.get('start', '').strip()
         if start_split_timestamp:
@@ -940,8 +959,8 @@ Examples:
                 if title_lower.startswith('n na ') or title_lower.startswith('np'):
                     return (False, float('inf'))
                 
-                if not splits or 'start' not in splits or not splits['start'].strip():
-                    # Missing start split - invalid
+                if not splits or 'start' not in splits or not splits['start'].strip() or splits['start'].strip() == "00:00:00.000":
+                    # Missing start split or zero start - invalid
                     return (False, float('inf'))
                 
                 try:
