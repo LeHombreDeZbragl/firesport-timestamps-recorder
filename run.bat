@@ -35,17 +35,29 @@ if "%COMMAND%"=="download" (
 )
 
 if "%COMMAND%"=="cut" (
-    "%PYTHON%" "%SCRIPT_DIR%firetimer-cutvid.py" "%2" "%3" "%4" "%5" "%6" "%7" "%8" "%9"
+    setlocal enabledelayedexpansion
+    set "ARGS=%*"
+    set "ARGS=!ARGS:*cut =!"
+    "%PYTHON%" "%SCRIPT_DIR%firetimer-cutvid.py" !ARGS!
+    endlocal
     goto :EOF
 )
 
 if "%COMMAND%"=="join" (
-    "%PYTHON%" "%SCRIPT_DIR%firetimer-joinvids.py" "%2" "%3" "%4" "%5" "%6" "%7" "%8" "%9"
+    setlocal enabledelayedexpansion
+    set "ARGS=%*"
+    set "ARGS=!ARGS:*join =!"
+    "%PYTHON%" "%SCRIPT_DIR%firetimer-joinvids.py" !ARGS!
+    endlocal
     goto :EOF
 )
 
 if "%COMMAND%"=="timer" (
-    "%PYTHON%" "%SCRIPT_DIR%add-timer.py" "%2" "%3" "%4" "%5" "%6" "%7" "%8" "%9"
+    setlocal enabledelayedexpansion
+    set "ARGS=%*"
+    set "ARGS=!ARGS:*timer =!"
+    "%PYTHON%" "%SCRIPT_DIR%add-timer.py" !ARGS!
+    endlocal
     goto :EOF
 )
 
