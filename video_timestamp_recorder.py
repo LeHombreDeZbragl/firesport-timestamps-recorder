@@ -1004,19 +1004,6 @@ class VideoPlayer(QMainWindow):
         if end_timestamp >= 0:
             if end_timestamp <= self.start_timestamp:
                 return
-            
-            # Find the highest timestamp among all splits
-            highest_split_timestamp = None
-            for split_ts in self.split_timestamps:
-                if split_ts is not None:
-                    if highest_split_timestamp is None or split_ts > highest_split_timestamp:
-                        highest_split_timestamp = split_ts
-            
-            # Adjust end timestamp if needed
-            if highest_split_timestamp is not None:
-                time_diff = end_timestamp - highest_split_timestamp
-                if time_diff < 5000:  # Less than 5 seconds
-                    end_timestamp = highest_split_timestamp + 5000
                 
             # Get title from input field or use default
             title = self.segment_name_input.text().strip()

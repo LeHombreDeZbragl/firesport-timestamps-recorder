@@ -366,7 +366,28 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     start_seconds = timestamp_to_seconds(start)  # začátek timestamp
     end_seconds = timestamp_to_seconds(end)      # konec timestamp
     duration = end_seconds - start_seconds
-    
+
+    # Calculate freeze extension: if konec is less than 5s after max(LP, PP), freeze last frame
+    freeze_extra = 0.0
+    if splits:
+        _lp_s = 0.0
+        _pp_s = 0.0
+        if 'LP' in splits and splits['LP'].strip() and splits['LP'].strip() != "00:00:00.000":
+            try:
+                _lp_s = timestamp_to_seconds(splits['LP'].strip())
+            except:
+                pass
+        if 'PP' in splits and splits['PP'].strip() and splits['PP'].strip() != "00:00:00.000":
+            try:
+                _pp_s = timestamp_to_seconds(splits['PP'].strip())
+            except:
+                pass
+        _max_lp_pp = max(_lp_s, _pp_s)
+        if _max_lp_pp > start_seconds:
+            min_required = _max_lp_pp - start_seconds + 5.0
+            freeze_extra = max(0.0, min_required - duration)
+    total_duration = duration + freeze_extra
+
     # Calculate timer offset and stop time from splits
     timer_offset = 0.0
     timer_stop_time = duration  # Default: stop at end
@@ -462,7 +483,11 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     
     # Build drawtext filters
     filters = ["setpts=PTS-STARTPTS"]  # Reset timestamps to start from 0
-    
+
+    # Freeze last frame if konec was too close to max(LP, PP)
+    if freeze_extra > 0:
+        filters.append(f"tpad=stop_mode=clone:stop_duration={freeze_extra:.3f}")
+
     # Add full-width grey bar at the bottom with smooth gradient transparency
     # Create smooth gradient by stacking boxes every 3 pixels with gradually increasing opacity
     bar_height = 140
@@ -545,7 +570,7 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     timer_slide_in_start = 0.2  # Same as title
     timer_slide_in_duration = 1.0  # Same as title
     timer_slide_in_end = timer_slide_in_start + timer_slide_in_duration
-    timer_slide_out_start = duration - 1.0  # Start sliding out 1 second before end
+    timer_slide_out_start = total_duration - 1.0  # Start sliding out 1 second before end
     timer_slide_out_duration = 1.0
     timer_slide_out_end = timer_slide_out_start + timer_slide_out_duration
     # Timer Y animation: slide in from bottom, stay visible, then slide down at end
@@ -657,6 +682,9 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                     # Each LP/PP gets 2 lines: top line (small font) for výstřik, bottom line (large font) for LP/PP
                     top_splits = ['LP', 'PP']
                     for split_name in top_splits:
+                        # Skip LP/PP overlay entirely when both are NP
+                        if not lp_has_value and not pp_has_value:
+                            continue
                         # Determine if this split has a value
                         has_value = (split_name == 'LP' and lp_has_value) or (split_name == 'PP' and pp_has_value)
                         
@@ -706,8 +734,8 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                             vystrik_combined = None
                         
                         # Animation parameters
-                        final_slide_out_start = duration - 1.0
-                        final_slide_out_end = duration
+                        final_slide_out_start = total_duration - 1.0
+                        final_slide_out_end = total_duration
                         
                         # Y position for main split (bottom line) - all timestamps aligned
                         y_pos_main = f"if(lt(t\\,{slide_start})\\,h+5\\,if(lt(t\\,{slide_end})\\,h+5-((t-{slide_start})/{slide_duration})*({5+timestamp_y_offset})\\,if(lt(t\\,{final_slide_out_start})\\,h-{timestamp_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-{timestamp_y_offset}+((t-{final_slide_out_start})/1.0)*({100+timestamp_y_offset})))))"
@@ -765,8 +793,8 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                                     split_slide_end = split_appears_at + split_slide_duration
                                     
                                     # Y position for timestamp: slide in from bottom, stay visible, then slide out 1s before end
-                                    final_slide_out_start = duration - 1.0
-                                    final_slide_out_end = duration
+                                    final_slide_out_start = total_duration - 1.0
+                                    final_slide_out_end = total_duration
                                     # Use same Y offset as LP/PP timestamps for perfect alignment
                                     y_pos_timestamp = f"if(lt(t\\,{split_slide_start})\\,h+5\\,if(lt(t\\,{split_slide_end})\\,h+5-((t-{split_slide_start})/{split_slide_duration})*({5+timestamp_y_offset})\\,if(lt(t\\,{final_slide_out_start})\\,h-{timestamp_y_offset}\\,if(gte(t\\,{final_slide_out_end})\\,h+100\\,h-{timestamp_y_offset}+((t-{final_slide_out_start})/1.0)*({100+timestamp_y_offset})))))"
                                     
@@ -802,8 +830,8 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
     # Build ffmpeg command
     cmd = [
         "ffmpeg",
-        "-ss", start, "-i", input_file,
-        "-t", str(duration),
+        "-ss", start, "-t", str(duration), "-i", input_file,
+        "-t", str(total_duration),
         "-vf", vf,
         "-c:v", "libx264", "-preset", "ultrafast",
         "-crf", "18",
@@ -996,8 +1024,8 @@ Examples:
                     order_prefix = invalid_counter
                     invalid_counter -= 1
             else:
-                # Without -z, show attack number (in original order)
-                label = f"{i + 1}.útok"
+                # Without -z, use no prefix label (title is shown as-is)
+                label = None
                 order_prefix = i + 1
             
             part = cut_and_label_segment(args.source, title, start, end, i, parts_dir, splits, label, order_prefix)
