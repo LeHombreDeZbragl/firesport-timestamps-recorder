@@ -82,6 +82,18 @@ def get_video_dimensions(path):
     stream = data["streams"][0]
     return stream["width"], stream["height"]
 
+def get_video_codec(path):
+    """Return the video codec name (e.g. 'hevc', 'h264') using ffprobe."""
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=codec_name",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    return result.stdout.strip().lower()
+
 def normalize_videos(video_list):
     normalized = []
     temps = []
@@ -91,21 +103,24 @@ def normalize_videos(video_list):
             "ffmpeg",
             "-fflags", "+genpts",
             "-i", v,
-            "-map", "0",
+            "-map", "0:v",
+            "-map", "0:a",
             "-c", "copy",
-            "-reset_timestamps", "1",
             "-avoid_negative_ts", "make_zero",
             "-max_interleave_delta", "0",
             "-y", temp
         ]
         print(f"🧹 Normalizing timestamps: {os.path.basename(v)}")
         try:
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             normalized.append(temp)
             temps.append(temp)
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
             if os.path.exists(temp):
                 os.remove(temp)
+            print(f"❌ FFmpeg error normalizing {os.path.basename(v)}:")
+            if e.stderr:
+                print(e.stderr)
             raise
     return normalized, temps
 
@@ -116,6 +131,11 @@ def join_videos(video_list, output_file="output.mp4"):
     output_path = os.path.abspath(output_file)
 
     needs_encode = any(not v.lower().endswith('.mp4') for v in video_list)
+    hevc_detected = False
+    if not needs_encode:
+        codecs = [get_video_codec(v) for v in video_list]
+        hevc_detected = any(c in {'hevc', 'h265'} for c in codecs)
+        needs_encode = hevc_detected
 
     if needs_encode:
         n = len(video_list)
@@ -123,8 +143,12 @@ def join_videos(video_list, output_file="output.mp4"):
         # Scale + pad everything else to match so concat doesn't choke on
         # mixed portrait/landscape clips (common with iPhone footage).
         target_w, target_h = get_video_dimensions(video_list[0])
-        print(f"\u26a0\ufe0f  Non-MP4 files detected \u2014 re-encoding all {n} clips to {target_w}\u00d7{target_h}...")
-        print(f"\U0001f4dd Output path: {output_path}")
+        if hevc_detected:
+            print(f"ℹ️  HEVC streams detected — re-encoding all {n} clips to H.264 ({target_w}×{target_h})...")
+            print("    (HEVC files from phones embed absolute device timestamps; stream copy cannot fix them)")
+        else:
+            print(f"⚠️  Non-MP4 files detected — re-encoding all {n} clips to {target_w}×{target_h}...")
+        print(f"📝 Output path: {output_path}")
 
         cmd = ["ffmpeg"]
         for v in video_list:
@@ -156,12 +180,11 @@ def join_videos(video_list, output_file="output.mp4"):
             "-y", output_path
         ]
     else:
-        # All native MP4 — fast path: fix timestamps then stream-copy
+        # All native MP4 — fast path: stream-copy without normalization
         temp_list = "_firejoiner_list.txt"
-        ready_list, encode_temps = normalize_videos(video_list)
         try:
             with open(temp_list, "w", encoding="utf-8") as f:
-                for v in ready_list:
+                for v in video_list:
                     f.write(f"file '{os.path.abspath(v)}'\n")
 
             print(f"🔗 Joining {len(video_list)} parts (fast copy)...")
@@ -182,9 +205,6 @@ def join_videos(video_list, output_file="output.mp4"):
         finally:
             if os.path.exists(temp_list):
                 os.remove(temp_list)
-            for t in encode_temps:
-                if os.path.exists(t):
-                    os.remove(t)
         return
 
     try:
