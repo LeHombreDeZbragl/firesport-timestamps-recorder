@@ -120,8 +120,16 @@ class VideoPlayer(QMainWindow):
             return
             
         self.media_player = self.instance.media_player_new()
-        
+
         self.current_video_path = None
+
+        # Frame navigation state.
+        # current_frame is the authoritative frame cursor for frame stepping so that
+        # rapid steps don't depend on VLC's asynchronous get_time() catching up.
+        # It is set to None whenever the position moves by other means (play, 5s seek,
+        # slider, load) so the next step re-derives it from the actual player time.
+        self.current_frame = None
+        self._cached_fps = None
         
         # Timestamp recording variables
         self.start_timestamp = None
@@ -450,8 +458,11 @@ class VideoPlayer(QMainWindow):
         
         if file_path:
             self.current_video_path = file_path
+            # Reset per-video frame navigation state.
+            self.current_frame = None
+            self._cached_fps = None
             media = self.instance.media_new(file_path)
-            
+
             self.media_player.set_media(media)
             
             # Enable controls
@@ -483,16 +494,21 @@ class VideoPlayer(QMainWindow):
         else:
             self.media_player.play()
             self.play_pause_button.setText("⏸️ Pause")
-            
+            # Playback will move the position; invalidate the frame cursor.
+            self.current_frame = None
+
     def stop_video(self):
         """Stop video playback"""
         self.media_player.stop()
         self.play_pause_button.setText("▶️ Play")
+        self.current_frame = None
         
-    def get_frame_duration_ms(self):
-        """Get the duration of one frame in milliseconds"""
-        default_frame_duration = 1000 / 30  # ~33.33ms
-        
+    def get_fps(self):
+        """Get the video's frame rate (frames per second), cached per loaded video."""
+        if self._cached_fps:
+            return self._cached_fps
+
+        fps = 30.0  # sensible default if the stream doesn't expose a frame rate
         try:
             media = self.media_player.get_media()
             if media:
@@ -500,13 +516,68 @@ class VideoPlayer(QMainWindow):
                 tracks = media.tracks_get()
                 for track in tracks:
                     if track.type == vlc.TrackType.video:
-                        fps = track.video.frame_rate_num / track.video.frame_rate_den if track.video.frame_rate_den > 0 else 30
-                        return 1000 / fps
-        except:
+                        if track.video.frame_rate_den > 0:
+                            fps = track.video.frame_rate_num / track.video.frame_rate_den
+                            self._cached_fps = fps
+                        break
+        except Exception:
             pass
-            
-        return default_frame_duration
-    
+
+        return fps
+
+    def get_frame_duration_ms(self):
+        """Get the duration of one frame in milliseconds"""
+        return 1000.0 / self.get_fps()
+
+    def _frame_from_time(self, ms):
+        """Return the index of the frame displayed at the given player time (ms)."""
+        return int(ms * self.get_fps() / 1000.0)
+
+    def _total_frames(self):
+        """Total number of frames, or None if the duration is unknown."""
+        duration = self.media_player.get_length()
+        if duration and duration > 0:
+            return int(duration * self.get_fps() / 1000.0)
+        return None
+
+    def _step_frames(self, delta):
+        """Move the playhead by `delta` frames (negative = backward).
+
+        Seeks to the centre of the target frame's display interval, which keeps the
+        target well clear of frame boundaries so millisecond rounding in VLC's
+        set_time/get_time never lands us back on the same frame.
+        """
+        if not (self.media_player and self.current_video_path):
+            return
+
+        if self.media_player.is_playing():
+            self.media_player.pause()
+            self.play_pause_button.setText("▶️ Play")
+            # Playback moved the position outside our control; re-derive the cursor.
+            self.current_frame = None
+
+        # Establish the current frame cursor, re-deriving from the player when it has
+        # been invalidated by playback or a non-frame seek.
+        if self.current_frame is None:
+            current_time = self.media_player.get_time()
+            if current_time < 0:
+                return
+            self.current_frame = self._frame_from_time(current_time)
+
+        target = self.current_frame + delta
+        if target < 0:
+            target = 0
+        total = self._total_frames()
+        if total is not None and target > total - 1:
+            target = total - 1
+
+        fps = self.get_fps()
+        target_ms = int((target + 0.5) * 1000.0 / fps)
+        self.media_player.set_time(target_ms)
+        self.current_frame = target
+        self.update_time_display()
+
+
     def seek_forward_5s(self):
         """Seek forward 5 seconds"""
         if self.media_player and self.current_video_path:
@@ -518,7 +589,8 @@ class VideoPlayer(QMainWindow):
                     self.media_player.set_time(new_time)
                 elif duration > 0:
                     self.media_player.set_time(duration)
-    
+                self.current_frame = None
+
     def seek_backward_5s(self):
         """Seek backward 5 seconds"""
         if self.media_player and self.current_video_path:
@@ -526,66 +598,23 @@ class VideoPlayer(QMainWindow):
             if current_time >= 0:
                 new_time = max(0, current_time - 5000)
                 self.media_player.set_time(new_time)
+                self.current_frame = None
     
     def frame_forward(self):
         """Move one frame forward"""
-        if self.media_player and self.current_video_path:
-            was_playing = self.media_player.is_playing()
-            if was_playing:
-                self.media_player.pause()
-                self.play_pause_button.setText("▶️ Play")
-            
-            current_time = self.media_player.get_time()
-            if current_time >= 0:
-                frame_duration = self.get_frame_duration_ms()
-                new_time = current_time + int(frame_duration)
-                duration = self.media_player.get_length()
-                if duration > 0 and new_time < duration:
-                    self.media_player.set_time(new_time)
-                    
+        self._step_frames(1)
+
     def frame_backward(self):
         """Move one frame backward"""
-        if self.media_player and self.current_video_path:
-            was_playing = self.media_player.is_playing()
-            if was_playing:
-                self.media_player.pause()
-                self.play_pause_button.setText("▶️ Play")
-            
-            current_time = self.media_player.get_time()
-            if current_time >= 0:
-                frame_duration = self.get_frame_duration_ms()
-                new_time = max(0, current_time - int(frame_duration))
-                self.media_player.set_time(new_time)
-                
+        self._step_frames(-1)
+
     def frame_forward_10(self):
         """Move 10 frames forward"""
-        if self.media_player and self.current_video_path:
-            was_playing = self.media_player.is_playing()
-            if was_playing:
-                self.media_player.pause()
-                self.play_pause_button.setText("▶️ Play")
-            
-            current_time = self.media_player.get_time()
-            if current_time >= 0:
-                frame_duration = self.get_frame_duration_ms()
-                new_time = current_time + int(frame_duration * 10)
-                duration = self.media_player.get_length()
-                if duration > 0 and new_time < duration:
-                    self.media_player.set_time(new_time)
-                    
+        self._step_frames(10)
+
     def frame_backward_10(self):
         """Move 10 frames backward"""
-        if self.media_player and self.current_video_path:
-            was_playing = self.media_player.is_playing()
-            if was_playing:
-                self.media_player.pause()
-                self.play_pause_button.setText("▶️ Play")
-            
-            current_time = self.media_player.get_time()
-            if current_time >= 0:
-                frame_duration = self.get_frame_duration_ms()
-                new_time = max(0, current_time - int(frame_duration * 10))
-                self.media_player.set_time(new_time)
+        self._step_frames(-10)
         
     def get_current_timestamp_ms(self):
         """Get current video timestamp in milliseconds"""
@@ -643,6 +672,7 @@ class VideoPlayer(QMainWindow):
         if duration > 0:
             position = self.progress_slider.value() / 1000.0
             self.media_player.set_position(position)
+            self.current_frame = None
         self.timer.start()
     
     def on_start_time_edited(self, text):
