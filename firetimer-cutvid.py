@@ -716,7 +716,11 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                                     split_seconds = timestamp_to_seconds(split_timestamp)
                                     relative_seconds = split_seconds - start_split_seconds
                                     seconds_part = int(relative_seconds)
-                                    centiseconds_part = int((relative_seconds - seconds_part) * 100)
+                                    centiseconds_part = round((relative_seconds - seconds_part) * 100)
+                                    # Handle edge case where rounding makes centiseconds=100
+                                    if centiseconds_part == 100:
+                                        seconds_part += 1
+                                        centiseconds_part = 0
                                     main_split_formatted = f"{seconds_part}\\:{centiseconds_part:02d}"
                                 except:
                                     pass
@@ -734,7 +738,11 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                                     vystrik_seconds = timestamp_to_seconds(vystrik_timestamp)
                                     vystrik_relative_seconds = vystrik_seconds - start_split_seconds
                                     vystrik_seconds_part = int(vystrik_relative_seconds)
-                                    vystrik_centiseconds_part = int((vystrik_relative_seconds - vystrik_seconds_part) * 100)
+                                    vystrik_centiseconds_part = round((vystrik_relative_seconds - vystrik_seconds_part) * 100)
+                                    # Handle edge case where rounding makes centiseconds=100
+                                    if vystrik_centiseconds_part == 100:
+                                        vystrik_seconds_part += 1
+                                        vystrik_centiseconds_part = 0
                                     vystrik_formatted = f"{vystrik_seconds_part}\\:{vystrik_centiseconds_part:02d}"
                                 except:
                                     pass
@@ -800,7 +808,11 @@ def cut_and_label_segment(input_file, title, start, end, index, parts_dir, split
                                     
                                     # Format with colon separator (XX:YY where YY is centiseconds)
                                     seconds_part = int(relative_seconds)
-                                    centiseconds_part = int((relative_seconds - seconds_part) * 100)
+                                    centiseconds_part = round((relative_seconds - seconds_part) * 100)
+                                    # Handle edge case where rounding makes centiseconds=100
+                                    if centiseconds_part == 100:
+                                        seconds_part += 1
+                                        centiseconds_part = 0
                                     split_formatted = f"{seconds_part}\\:{centiseconds_part:02d}"
                                     
                                     # Escape the display name

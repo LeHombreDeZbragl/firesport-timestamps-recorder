@@ -7,17 +7,14 @@ _firetimer_helper/
 *.mp4
 *.avi
 *.mov
+*.MTS
 *.mkv
 *.wmv
 *.flv
 *.webm
 *.m4v
 *.mp4.webm
-
-# Generated timestamp files from the video recorder
-timestamps*.txt
-segments*.txt
-output*.txt
+*.txt
 
 # Generated video folders and files
 out-parts/
@@ -83,6 +80,9 @@ Desktop.ini
 *.tmp
 *.temp
 *.log
+
+# Zip files
+*.zip
 
 # Keep these important files (negation patterns)
 !requirements.txt
